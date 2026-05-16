@@ -65,29 +65,38 @@ async function main() {
 
   // ── 4. Write deployments JSON ─────────────────────────────────────────────
 
-  const deploymentsDir = path.join(__dirname, "..", "deployments");
-  if (!fs.existsSync(deploymentsDir)) {
-    fs.mkdirSync(deploymentsDir, { recursive: true });
-  }
-
-  const deployments = {
-    network:           "kite-testnet",
-    chainId:           2368,
-    deployedAt:        new Date().toISOString(),
-    deployer:          deployer.address,
-    signalRegistry:    signalRegistryAddress,
-    subscriptionPass:  subscriptionPassAddress,
-    clientAgentVault:  clientAgentVaultAddress,
-    usdtToken:         TESTNET_USDT,
+  const deploymentsRecord = {
+    network:          "kite-testnet",
+    chainId:          2368,
+    deployedAt:       new Date().toISOString(),
+    deployer:         deployer.address,
+    signalRegistry:   signalRegistryAddress,
+    subscriptionPass: subscriptionPassAddress,
+    clientAgentVault: clientAgentVaultAddress,
+    usdtToken:        TESTNET_USDT,
     config: {
-      minStakeEth:    "0.001",
+      minStakeEth:         "0.001",
       vaultDailyBudgetEth: "0.01",
     },
   };
 
+  const deploymentsJson = JSON.stringify(deploymentsRecord, null, 2);
+
+  // Write to contracts/deployments/ (canonical deployment record)
+  const deploymentsDir = path.join(__dirname, "..", "deployments");
+  if (!fs.existsSync(deploymentsDir)) {
+    fs.mkdirSync(deploymentsDir, { recursive: true });
+  }
   const deploymentsPath = path.join(deploymentsDir, "kite-testnet.json");
-  fs.writeFileSync(deploymentsPath, JSON.stringify(deployments, null, 2));
-  console.log("\nDeployment addresses written to:", deploymentsPath);
+  fs.writeFileSync(deploymentsPath, deploymentsJson);
+  console.log("\nDeployment record written to:    ", deploymentsPath);
+
+  // Also write to lib/contracts/src/ so the TypeScript package exports live addresses
+  const libContractsPath = path.join(
+    __dirname, "..", "..", "lib", "contracts", "src", "kite-testnet.json"
+  );
+  fs.writeFileSync(libContractsPath, deploymentsJson);
+  console.log("TypeScript package updated at:   ", libContractsPath);
 
   // ── 5. Summary ────────────────────────────────────────────────────────────
 

@@ -8,9 +8,12 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title SubscriptionPass
- * @notice ERC-1155 subscription pass contract. Subscribers pay in testnet USDT
- *         and receive a time-bounded access pass. The backend calls isActive()
- *         to verify pass ownership independently of the session token.
+ * @notice Soulbound ERC-1155 subscription pass contract. Subscribers pay in testnet
+ *         USDT and receive a time-bounded, non-transferable access pass.
+ *
+ *  Passes are SOULBOUND — transfers between non-zero addresses are blocked.
+ *  isActive() verifies BOTH on-chain balanceOf AND unexpired timestamp, preventing
+ *  any authorization bypass via stale mappings.
  *
  *  Token IDs (tiers):
  *    1 = Basic   — 7 days   — 1 USDT
@@ -34,8 +37,7 @@ contract SubscriptionPass is ERC1155, Ownable, ReentrancyGuard {
     uint256 public constant DURATION_7D  = 7  days;
     uint256 public constant DURATION_30D = 30 days;
 
-    // Price in USDT (6 decimals for mainnet, 18 for testnet USDT)
-    // Using 18-decimal testnet USDT: 0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63
+    // Price in USDT (18-decimal testnet USDT: 0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63)
     uint256 public constant PRICE_BASIC = 1  * 1e18;  // 1 USDT
     uint256 public constant PRICE_PRO   = 5  * 1e18;  // 5 USDT
     uint256 public constant PRICE_ELITE = 15 * 1e18;  // 15 USDT
@@ -74,6 +76,7 @@ contract SubscriptionPass is ERC1155, Ownable, ReentrancyGuard {
 
     error InvalidTier(uint8 tier);
     error PaymentFailed();
+    error TransferNotAllowed();
 
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
@@ -84,6 +87,26 @@ contract SubscriptionPass is ERC1155, Ownable, ReentrancyGuard {
         Ownable(initialOwner)
     {
         usdt = IERC20(usdtAddress);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Soulbound: block all transfers between non-zero addresses
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @dev Override _update to make passes soulbound. Only minting (from == 0)
+     *      and burning (to == 0) are allowed. Any peer-to-peer transfer reverts.
+     */
+    function _update(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values
+    ) internal override {
+        if (from != address(0) && to != address(0)) {
+            revert TransferNotAllowed();
+        }
+        super._update(from, to, ids, values);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -128,7 +151,11 @@ contract SubscriptionPass is ERC1155, Ownable, ReentrancyGuard {
 
     /**
      * @notice Check if a subscriber has an active pass.
-     * @return active    True if the pass is unexpired.
+     *         Verifies BOTH token ownership (balanceOf > 0) AND unexpired timestamp.
+     *         Since passes are soulbound, this dual check is the authoritative
+     *         source of truth — no mapping-only bypass is possible.
+     *
+     * @return active    True if the pass is unexpired AND the wallet holds the token.
      * @return tier      The subscriber's current tier (0 if none).
      * @return expiresAt The unix timestamp when the pass expires (0 if none).
      */
@@ -137,9 +164,14 @@ contract SubscriptionPass is ERC1155, Ownable, ReentrancyGuard {
         view
         returns (bool active, uint8 tier, uint256 expiresAt)
     {
-        expiresAt = _expiresAt[subscriber];
         tier      = _tier[subscriber];
-        active    = (expiresAt > block.timestamp);
+        expiresAt = _expiresAt[subscriber];
+
+        // Dual verification: unexpired timestamp AND on-chain token balance
+        bool unexpired = (expiresAt > block.timestamp);
+        bool hasToken  = (tier != 0 && balanceOf(subscriber, uint256(tier)) > 0);
+
+        active = unexpired && hasToken;
     }
 
     /**

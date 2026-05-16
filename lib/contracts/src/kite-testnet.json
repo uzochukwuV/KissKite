@@ -1,0 +1,11 @@
+{
+  "network": "kite-testnet",
+  "chainId": 2368,
+  "deployedAt": "",
+  "deployer": "0x25C255dc933A0017Ac48401efc11229Aaa39A4e3",
+  "signalRegistry": "",
+  "subscriptionPass": "",
+  "clientAgentVault": "",
+  "usdtToken": "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63",
+  "note": "Addresses populated by: cd contracts && DEPLOYER_PRIVATE_KEY=$DEPLOYER_PRIVATE_KEY HARDHAT_DISABLE_TELEMETRY_PROMPT=true ./node_modules/.bin/hardhat run scripts/deploy.ts --network kite"
+}

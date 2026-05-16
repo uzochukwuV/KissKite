@@ -761,8 +761,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/SubscriptionPass.sol": {
-      "lastModificationDate": 1778952889827,
-      "contentHash": "f0e5fbd5450345772f301161156e7fd5",
+      "lastModificationDate": 1778953256219,
+      "contentHash": "36d5e27521247a48342ed297f30314e3",
       "sourceName": "contracts/SubscriptionPass.sol",
       "solcConfig": {
         "version": "0.8.24",
