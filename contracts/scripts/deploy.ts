@@ -15,14 +15,8 @@ async function main() {
   // ── 1. Deploy SignalRegistry ──────────────────────────────────────────────
 
   console.log("Deploying SignalRegistry...");
-  const minStakeWei = ethers.parseEther("0.001");
-
   const SignalRegistry = await ethers.getContractFactory("SignalRegistry");
-  const signalRegistry = await SignalRegistry.deploy(
-    deployer.address, // owner
-    deployer.address, // settler (keeper — update after deployment)
-    minStakeWei
-  );
+  const signalRegistry = await SignalRegistry.deploy();
   await signalRegistry.waitForDeployment();
   const signalRegistryAddress = await signalRegistry.getAddress();
   console.log("SignalRegistry:   ", signalRegistryAddress);
@@ -39,31 +33,7 @@ async function main() {
   const subscriptionPassAddress = await subscriptionPass.getAddress();
   console.log("SubscriptionPass: ", subscriptionPassAddress);
 
-  // ── 3. Deploy ClientAgentVault (example instance) ─────────────────────────
-
-  console.log("Deploying ClientAgentVault (example instance)...");
-  const ClientAgentVault = await ethers.getContractFactory("ClientAgentVault");
-  const clientAgentVault = await ClientAgentVault.deploy(
-    deployer.address,
-    deployer.address,
-    deployer.address
-  );
-  await clientAgentVault.waitForDeployment();
-  const clientAgentVaultAddress = await clientAgentVault.getAddress();
-  console.log("ClientAgentVault: ", clientAgentVaultAddress);
-
-  // Configure vault spending rules
-  const dailyBudget = ethers.parseEther("0.01");
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  await clientAgentVault.configureSpendingRules(
-    [86400n],
-    [dailyBudget],
-    [now],
-    [[signalRegistryAddress]]
-  );
-  console.log("Vault spending rules configured");
-
-  // ── 4. Write deployments JSON ─────────────────────────────────────────────
+  // ── 3. Write deployments JSON ─────────────────────────────────────────────
 
   const deploymentsRecord = {
     network:          "kite-testnet",
@@ -72,12 +42,7 @@ async function main() {
     deployer:         deployer.address,
     signalRegistry:   signalRegistryAddress,
     subscriptionPass: subscriptionPassAddress,
-    clientAgentVault: clientAgentVaultAddress,
     usdtToken:        TESTNET_USDT,
-    config: {
-      minStakeEth:         "0.001",
-      vaultDailyBudgetEth: "0.01",
-    },
   };
 
   const deploymentsJson = JSON.stringify(deploymentsRecord, null, 2);
@@ -95,10 +60,12 @@ async function main() {
   const libContractsPath = path.join(
     __dirname, "..", "..", "lib", "contracts", "src", "kite-testnet.json"
   );
-  fs.writeFileSync(libContractsPath, deploymentsJson);
-  console.log("TypeScript package updated at:   ", libContractsPath);
+  if (fs.existsSync(path.dirname(libContractsPath))) {
+    fs.writeFileSync(libContractsPath, deploymentsJson);
+    console.log("TypeScript package updated at:   ", libContractsPath);
+  }
 
-  // ── 5. Summary ────────────────────────────────────────────────────────────
+  // ── 4. Summary ────────────────────────────────────────────────────────────
 
   console.log("\n════════════════════════════════════════════════════════");
   console.log("DEPLOYMENT SUMMARY — Kite Testnet");
@@ -106,11 +73,11 @@ async function main() {
   console.log("Deployer:         ", deployer.address);
   console.log("SignalRegistry:   ", signalRegistryAddress);
   console.log("SubscriptionPass: ", subscriptionPassAddress);
-  console.log("ClientAgentVault: ", clientAgentVaultAddress);
   console.log("USDT Token:       ", TESTNET_USDT);
   console.log("════════════════════════════════════════════════════════");
-  console.log("\nSet SIGNAL_REGISTRY_ADDRESS, SUBSCRIPTION_PASS_ADDRESS");
-  console.log("in Replit Secrets after deployment.");
+  console.log("\nNext: set these in Replit Secrets:");
+  console.log("  SIGNAL_REGISTRY_ADDRESS  =", signalRegistryAddress);
+  console.log("  SUBSCRIPTION_PASS_ADDRESS=", subscriptionPassAddress);
 }
 
 main().catch((error) => {

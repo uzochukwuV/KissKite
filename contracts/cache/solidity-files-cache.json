@@ -189,8 +189,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/SignalRegistry.sol": {
-      "lastModificationDate": 1778952862899,
-      "contentHash": "cab3bd33fb66683dc197e340e953b16a",
+      "lastModificationDate": 1778953532311,
+      "contentHash": "03ee39ebb549890f3ce329011002b9a7",
       "sourceName": "contracts/SignalRegistry.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -216,10 +216,7 @@
           }
         }
       },
-      "imports": [
-        "@openzeppelin/contracts/access/Ownable.sol",
-        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
-      ],
+      "imports": [],
       "versionPragmas": [
         "^0.8.24"
       ],

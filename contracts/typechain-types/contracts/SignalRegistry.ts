@@ -23,42 +23,6 @@ import type {
   TypedContractMethod,
 } from "../common";
 
-export declare namespace SignalRegistry {
-  export type SignalStruct = {
-    signalHash: BytesLike;
-    agent: AddressLike;
-    expiration: BigNumberish;
-    committedAt: BigNumberish;
-    stakeAmount: BigNumberish;
-    status: BigNumberish;
-    accurate: boolean;
-    pnlBps: BigNumberish;
-    rawPayload: string;
-  };
-
-  export type SignalStructOutput = [
-    signalHash: string,
-    agent: string,
-    expiration: bigint,
-    committedAt: bigint,
-    stakeAmount: bigint,
-    status: bigint,
-    accurate: boolean,
-    pnlBps: bigint,
-    rawPayload: string
-  ] & {
-    signalHash: string;
-    agent: string;
-    expiration: bigint;
-    committedAt: bigint;
-    stakeAmount: bigint;
-    status: bigint;
-    accurate: boolean;
-    pnlBps: bigint;
-    rawPayload: string;
-  };
-}
-
 export interface SignalRegistryInterface extends Interface {
   getFunction(
     nameOrSignature:
@@ -67,29 +31,12 @@ export interface SignalRegistryInterface extends Interface {
       | "getAgentSignalIds"
       | "getSignal"
       | "hashCommitted"
-      | "markExpired"
-      | "minStake"
       | "nextSignalId"
-      | "owner"
-      | "renounceOwnership"
       | "revealSignal"
-      | "setMinStake"
-      | "setSettler"
-      | "settleSignal"
-      | "settler"
-      | "transferOwnership"
-      | "withdrawFunds"
   ): FunctionFragment;
 
   getEvent(
-    nameOrSignatureOrTopic:
-      | "MinStakeUpdated"
-      | "OwnershipTransferred"
-      | "SettlerUpdated"
-      | "SignalCommitted"
-      | "SignalExpired"
-      | "SignalRevealed"
-      | "SignalSettled"
+    nameOrSignatureOrTopic: "SignalCommitted" | "SignalRevealed"
   ): EventFragment;
 
   encodeFunctionData(
@@ -113,43 +60,12 @@ export interface SignalRegistryInterface extends Interface {
     values: [BytesLike]
   ): string;
   encodeFunctionData(
-    functionFragment: "markExpired",
-    values: [BigNumberish]
-  ): string;
-  encodeFunctionData(functionFragment: "minStake", values?: undefined): string;
-  encodeFunctionData(
     functionFragment: "nextSignalId",
-    values?: undefined
-  ): string;
-  encodeFunctionData(functionFragment: "owner", values?: undefined): string;
-  encodeFunctionData(
-    functionFragment: "renounceOwnership",
     values?: undefined
   ): string;
   encodeFunctionData(
     functionFragment: "revealSignal",
     values: [BigNumberish, string, string]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "setMinStake",
-    values: [BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "setSettler",
-    values: [AddressLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "settleSignal",
-    values: [BigNumberish, boolean, BigNumberish]
-  ): string;
-  encodeFunctionData(functionFragment: "settler", values?: undefined): string;
-  encodeFunctionData(
-    functionFragment: "transferOwnership",
-    values: [AddressLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "withdrawFunds",
-    values: [AddressLike, BigNumberish]
   ): string;
 
   decodeFunctionResult(
@@ -170,113 +86,33 @@ export interface SignalRegistryInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "markExpired",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(functionFragment: "minStake", data: BytesLike): Result;
-  decodeFunctionResult(
     functionFragment: "nextSignalId",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "renounceOwnership",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
     functionFragment: "revealSignal",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(
-    functionFragment: "setMinStake",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(functionFragment: "setSettler", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "settleSignal",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(functionFragment: "settler", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "transferOwnership",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "withdrawFunds",
-    data: BytesLike
-  ): Result;
-}
-
-export namespace MinStakeUpdatedEvent {
-  export type InputTuple = [newMinStake: BigNumberish];
-  export type OutputTuple = [newMinStake: bigint];
-  export interface OutputObject {
-    newMinStake: bigint;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
-export namespace OwnershipTransferredEvent {
-  export type InputTuple = [previousOwner: AddressLike, newOwner: AddressLike];
-  export type OutputTuple = [previousOwner: string, newOwner: string];
-  export interface OutputObject {
-    previousOwner: string;
-    newOwner: string;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
-export namespace SettlerUpdatedEvent {
-  export type InputTuple = [newSettler: AddressLike];
-  export type OutputTuple = [newSettler: string];
-  export interface OutputObject {
-    newSettler: string;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace SignalCommittedEvent {
   export type InputTuple = [
     signalId: BigNumberish,
     agent: AddressLike,
-    signalHash: BytesLike,
-    expiration: BigNumberish,
-    stakeAmount: BigNumberish
+    hash: BytesLike,
+    expiration: BigNumberish
   ];
   export type OutputTuple = [
     signalId: bigint,
     agent: string,
-    signalHash: string,
-    expiration: bigint,
-    stakeAmount: bigint
+    hash: string,
+    expiration: bigint
   ];
   export interface OutputObject {
     signalId: bigint;
     agent: string;
-    signalHash: string;
+    hash: string;
     expiration: bigint;
-    stakeAmount: bigint;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
-export namespace SignalExpiredEvent {
-  export type InputTuple = [signalId: BigNumberish];
-  export type OutputTuple = [signalId: bigint];
-  export interface OutputObject {
-    signalId: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -299,31 +135,6 @@ export namespace SignalRevealedEvent {
     signalId: bigint;
     agent: string;
     rawPayload: string;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
-export namespace SignalSettledEvent {
-  export type InputTuple = [
-    signalId: BigNumberish,
-    agent: AddressLike,
-    accurate: boolean,
-    pnlBps: BigNumberish
-  ];
-  export type OutputTuple = [
-    signalId: bigint,
-    agent: string,
-    accurate: boolean,
-    pnlBps: bigint
-  ];
-  export interface OutputObject {
-    signalId: bigint;
-    agent: string;
-    accurate: boolean;
-    pnlBps: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -375,9 +186,9 @@ export interface SignalRegistry extends BaseContract {
   ): Promise<this>;
 
   commitSignal: TypedContractMethod<
-    [signalHash: BytesLike, expiration: BigNumberish],
+    [hash: BytesLike, expiration: BigNumberish],
     [bigint],
-    "payable"
+    "nonpayable"
   >;
 
   getAgentSignalCount: TypedContractMethod<
@@ -393,61 +204,25 @@ export interface SignalRegistry extends BaseContract {
   >;
 
   getSignal: TypedContractMethod<
-    [signalId: BigNumberish],
-    [SignalRegistry.SignalStructOutput],
+    [id: BigNumberish],
+    [
+      [string, string, bigint, bigint, boolean] & {
+        hash: string;
+        agent: string;
+        committedAt: bigint;
+        expiration: bigint;
+        revealed: boolean;
+      }
+    ],
     "view"
   >;
 
   hashCommitted: TypedContractMethod<[arg0: BytesLike], [boolean], "view">;
 
-  markExpired: TypedContractMethod<
-    [signalId: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
-  minStake: TypedContractMethod<[], [bigint], "view">;
-
   nextSignalId: TypedContractMethod<[], [bigint], "view">;
 
-  owner: TypedContractMethod<[], [string], "view">;
-
-  renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
-
   revealSignal: TypedContractMethod<
-    [signalId: BigNumberish, rawPayload: string, salt: string],
-    [void],
-    "nonpayable"
-  >;
-
-  setMinStake: TypedContractMethod<
-    [newMinStake: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
-  setSettler: TypedContractMethod<
-    [newSettler: AddressLike],
-    [void],
-    "nonpayable"
-  >;
-
-  settleSignal: TypedContractMethod<
-    [signalId: BigNumberish, accurate: boolean, pnlBps: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
-  settler: TypedContractMethod<[], [string], "view">;
-
-  transferOwnership: TypedContractMethod<
-    [newOwner: AddressLike],
-    [void],
-    "nonpayable"
-  >;
-
-  withdrawFunds: TypedContractMethod<
-    [to: AddressLike, amount: BigNumberish],
+    [onChainId: BigNumberish, rawPayload: string, salt: string],
     [void],
     "nonpayable"
   >;
@@ -459,9 +234,9 @@ export interface SignalRegistry extends BaseContract {
   getFunction(
     nameOrSignature: "commitSignal"
   ): TypedContractMethod<
-    [signalHash: BytesLike, expiration: BigNumberish],
+    [hash: BytesLike, expiration: BigNumberish],
     [bigint],
-    "payable"
+    "nonpayable"
   >;
   getFunction(
     nameOrSignature: "getAgentSignalCount"
@@ -472,83 +247,32 @@ export interface SignalRegistry extends BaseContract {
   getFunction(
     nameOrSignature: "getSignal"
   ): TypedContractMethod<
-    [signalId: BigNumberish],
-    [SignalRegistry.SignalStructOutput],
+    [id: BigNumberish],
+    [
+      [string, string, bigint, bigint, boolean] & {
+        hash: string;
+        agent: string;
+        committedAt: bigint;
+        expiration: bigint;
+        revealed: boolean;
+      }
+    ],
     "view"
   >;
   getFunction(
     nameOrSignature: "hashCommitted"
   ): TypedContractMethod<[arg0: BytesLike], [boolean], "view">;
   getFunction(
-    nameOrSignature: "markExpired"
-  ): TypedContractMethod<[signalId: BigNumberish], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "minStake"
-  ): TypedContractMethod<[], [bigint], "view">;
-  getFunction(
     nameOrSignature: "nextSignalId"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
-    nameOrSignature: "owner"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "renounceOwnership"
-  ): TypedContractMethod<[], [void], "nonpayable">;
-  getFunction(
     nameOrSignature: "revealSignal"
   ): TypedContractMethod<
-    [signalId: BigNumberish, rawPayload: string, salt: string],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "setMinStake"
-  ): TypedContractMethod<[newMinStake: BigNumberish], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "setSettler"
-  ): TypedContractMethod<[newSettler: AddressLike], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "settleSignal"
-  ): TypedContractMethod<
-    [signalId: BigNumberish, accurate: boolean, pnlBps: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "settler"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "transferOwnership"
-  ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "withdrawFunds"
-  ): TypedContractMethod<
-    [to: AddressLike, amount: BigNumberish],
+    [onChainId: BigNumberish, rawPayload: string, salt: string],
     [void],
     "nonpayable"
   >;
 
-  getEvent(
-    key: "MinStakeUpdated"
-  ): TypedContractEvent<
-    MinStakeUpdatedEvent.InputTuple,
-    MinStakeUpdatedEvent.OutputTuple,
-    MinStakeUpdatedEvent.OutputObject
-  >;
-  getEvent(
-    key: "OwnershipTransferred"
-  ): TypedContractEvent<
-    OwnershipTransferredEvent.InputTuple,
-    OwnershipTransferredEvent.OutputTuple,
-    OwnershipTransferredEvent.OutputObject
-  >;
-  getEvent(
-    key: "SettlerUpdated"
-  ): TypedContractEvent<
-    SettlerUpdatedEvent.InputTuple,
-    SettlerUpdatedEvent.OutputTuple,
-    SettlerUpdatedEvent.OutputObject
-  >;
   getEvent(
     key: "SignalCommitted"
   ): TypedContractEvent<
@@ -557,62 +281,15 @@ export interface SignalRegistry extends BaseContract {
     SignalCommittedEvent.OutputObject
   >;
   getEvent(
-    key: "SignalExpired"
-  ): TypedContractEvent<
-    SignalExpiredEvent.InputTuple,
-    SignalExpiredEvent.OutputTuple,
-    SignalExpiredEvent.OutputObject
-  >;
-  getEvent(
     key: "SignalRevealed"
   ): TypedContractEvent<
     SignalRevealedEvent.InputTuple,
     SignalRevealedEvent.OutputTuple,
     SignalRevealedEvent.OutputObject
   >;
-  getEvent(
-    key: "SignalSettled"
-  ): TypedContractEvent<
-    SignalSettledEvent.InputTuple,
-    SignalSettledEvent.OutputTuple,
-    SignalSettledEvent.OutputObject
-  >;
 
   filters: {
-    "MinStakeUpdated(uint256)": TypedContractEvent<
-      MinStakeUpdatedEvent.InputTuple,
-      MinStakeUpdatedEvent.OutputTuple,
-      MinStakeUpdatedEvent.OutputObject
-    >;
-    MinStakeUpdated: TypedContractEvent<
-      MinStakeUpdatedEvent.InputTuple,
-      MinStakeUpdatedEvent.OutputTuple,
-      MinStakeUpdatedEvent.OutputObject
-    >;
-
-    "OwnershipTransferred(address,address)": TypedContractEvent<
-      OwnershipTransferredEvent.InputTuple,
-      OwnershipTransferredEvent.OutputTuple,
-      OwnershipTransferredEvent.OutputObject
-    >;
-    OwnershipTransferred: TypedContractEvent<
-      OwnershipTransferredEvent.InputTuple,
-      OwnershipTransferredEvent.OutputTuple,
-      OwnershipTransferredEvent.OutputObject
-    >;
-
-    "SettlerUpdated(address)": TypedContractEvent<
-      SettlerUpdatedEvent.InputTuple,
-      SettlerUpdatedEvent.OutputTuple,
-      SettlerUpdatedEvent.OutputObject
-    >;
-    SettlerUpdated: TypedContractEvent<
-      SettlerUpdatedEvent.InputTuple,
-      SettlerUpdatedEvent.OutputTuple,
-      SettlerUpdatedEvent.OutputObject
-    >;
-
-    "SignalCommitted(uint256,address,bytes32,uint256,uint256)": TypedContractEvent<
+    "SignalCommitted(uint256,address,bytes32,uint256)": TypedContractEvent<
       SignalCommittedEvent.InputTuple,
       SignalCommittedEvent.OutputTuple,
       SignalCommittedEvent.OutputObject
@@ -621,17 +298,6 @@ export interface SignalRegistry extends BaseContract {
       SignalCommittedEvent.InputTuple,
       SignalCommittedEvent.OutputTuple,
       SignalCommittedEvent.OutputObject
-    >;
-
-    "SignalExpired(uint256)": TypedContractEvent<
-      SignalExpiredEvent.InputTuple,
-      SignalExpiredEvent.OutputTuple,
-      SignalExpiredEvent.OutputObject
-    >;
-    SignalExpired: TypedContractEvent<
-      SignalExpiredEvent.InputTuple,
-      SignalExpiredEvent.OutputTuple,
-      SignalExpiredEvent.OutputObject
     >;
 
     "SignalRevealed(uint256,address,string)": TypedContractEvent<
@@ -643,17 +309,6 @@ export interface SignalRegistry extends BaseContract {
       SignalRevealedEvent.InputTuple,
       SignalRevealedEvent.OutputTuple,
       SignalRevealedEvent.OutputObject
-    >;
-
-    "SignalSettled(uint256,address,bool,int256)": TypedContractEvent<
-      SignalSettledEvent.InputTuple,
-      SignalSettledEvent.OutputTuple,
-      SignalSettledEvent.OutputObject
-    >;
-    SignalSettled: TypedContractEvent<
-      SignalSettledEvent.InputTuple,
-      SignalSettledEvent.OutputTuple,
-      SignalSettledEvent.OutputObject
     >;
   };
 }
