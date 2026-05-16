@@ -3,3 +3,4 @@
 /* eslint-disable */
 export type { ClientAgentVault } from "./ClientAgentVault";
 export type { SignalRegistry } from "./SignalRegistry";
+export type { SubscriptionPass } from "./SubscriptionPass";

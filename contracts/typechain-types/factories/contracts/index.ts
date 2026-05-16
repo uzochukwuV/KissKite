@@ -3,3 +3,4 @@
 /* eslint-disable */
 export { ClientAgentVault__factory } from "./ClientAgentVault__factory";
 export { SignalRegistry__factory } from "./SignalRegistry__factory";
+export { SubscriptionPass__factory } from "./SubscriptionPass__factory";

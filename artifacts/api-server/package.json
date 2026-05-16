@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
+    "@workspace/contracts": "workspace:*",
     "@workspace/db": "workspace:*",
+    "ethers": "^6.14.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "drizzle-orm": "catalog:",
