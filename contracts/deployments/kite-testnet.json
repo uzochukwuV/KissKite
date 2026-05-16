@@ -1,1 +1,9 @@
-{"network":"kite-testnet","chainId":2368,"signalRegistry":"","subscriptionPass":"","clientAgentVault":"","usdtToken":"0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63","note":"Run deploy script after funding deployer address"}
+{
+  "network": "kite-testnet",
+  "chainId": 2368,
+  "deployedAt": "2026-05-16T17:49:41.325Z",
+  "deployer": "0x25C255dc933A0017Ac48401efc11229Aaa39A4e3",
+  "signalRegistry": "0x0788984E48c5A834C642FF7d60870b6209ad19c5",
+  "subscriptionPass": "0x11B50f35eAA67fEE0943d26351EC1E8E0840b931",
+  "usdtToken": "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63"
+}
