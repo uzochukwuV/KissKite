@@ -1,0 +1,203 @@
+## What's Left (Non-Frontend)
+
+**Critical before submission:**
+
+1. **Signal expiry job** — Nothing currently marks signals as `expired` when they pass their deadline without being settled. The scorer settles them, but if `revealSignal` was never called on-chain the signal just rots as `pending` in DB forever. Need a background job that sweeps expired pending signals and marks them `expired` with a reason.
+
+2. **Reveal automation** — The commit-reveal flow is half-automated. Agents commit, but who calls `revealSignal` on-chain before expiration? If that step is manual your autonomy score takes a hit. The scorer or a separate keeper needs to call `revealSignal` before attempting settlement.
+
+3. **Scorer startup validation** — The scorer should check on boot that all required env vars are present (`SCORER_PRIVATE_KEY`, `REPUTATION_REGISTRY_ADDRESS`, `ANTHROPIC_API_KEY`, `API_BASE_URL`, `DATABASE_URL`), that the Kite RPC is reachable, and that the scorer wallet has enough gas. Fail fast with a clear error rather than crashing mid-run during the demo.
+
+4. **Retry logic in scorer** — If the settlement API is down, the scorer should retry with exponential backoff before giving up, not silently drop the settlement.
+
+5. **Demo seed script** — A script that registers demo agents, commits a batch of signals with realistic assets/prices/directions, and fast-forwards some to expired state so the scorer has something to process live during the demo.
+
+6. **README** — Hackathon requirement. Must cover: repo structure, env var list, deploy steps, how to run scorer, how to run API, how to trigger the full loop end-to-end.
+
+7. **Contract verification** — Submit source to Kite explorer if available. Judges will check.
+
+**Nice to have:**
+- Docker Compose wiring API + scorer + postgres together
+- `GET /api/leaderboard` route ranking agents by on-chain `reputationScore`
+
+---
+
+## Testing Prompt
+
+---
+
+You are writing a complete test suite for the **Kite Signal Platform** — a TypeScript monorepo. You are testing four layers: Solidity contracts, the Express API, the scorer node, and the integrated end-to-end flow. Build all tests completely before moving to the next layer.
+
+**Monorepo structure:**
+- `contracts/` — Hardhat, Solidity ^0.8.24, OpenZeppelin v5, ethers v6
+- `artifacts/api-server/` — Express, Drizzle ORM, PostgreSQL, pino, WebSocket
+- `artifacts/scorer/` — standalone TypeScript keeper, polls DB, calls Claude, writes on-chain
+- `lib/contracts/` — shared ABIs, DEPLOYMENTS object
+- `lib/db/` — Drizzle schema: `agentsTable`, `signalsTable`, `subscribersTable`
+- `lib/api-zod/` — shared Zod schemas
+
+**Test stack to use:**
+- Contracts: Hardhat + `@nomicfoundation/hardhat-chai-matchers` + `ethers` v6
+- API: `vitest` + `supertest` + in-memory SQLite via Drizzle (swap pg adapter for tests)
+- Scorer: `vitest` + `vi.mock()` for Claude and ethers
+- E2E: `vitest` + supertest against a real test server with test DB
+
+---
+
+### LAYER 1 — Contract Tests (`contracts/test/`)
+
+**`ReputationRegistry.test.ts`**
+
+Deploy a fresh `ReputationRegistry` with `deployer` as owner and `scorer` as scorer address. Test:
+
+- `recordSettlement` reverts with `Unauthorized()` when called by a non-scorer address
+- `recordSettlement` correctly increments `totalSignals`, `settledSignals`, `accurateSignals` after one accurate settlement
+- `reputationScore` equals `10000` after one accurate signal and `0` after one inaccurate signal
+- `reputationScore` equals `5000` after one accurate + one inaccurate signal
+- `recordSettlement` reverts with `SignalAlreadyRecorded(signalId)` on duplicate signalId
+- `getReputation` returns zero-value struct for an address with no history
+- `getScore` returns `0` before any settlements and correct bps after
+- `ReputationUpdated` event is emitted with correct args on every `recordSettlement` call
+- Owner can update the scorer address; new scorer can write; old scorer is rejected
+
+**`SignalRegistry.test.ts`**
+
+- `commitSignal` reverts with `InvalidHash()` on `bytes32(0)`
+- `commitSignal` reverts with `ExpirationInPast` when expiration <= block.timestamp
+- `commitSignal` reverts with `HashAlreadyCommitted` on duplicate hash
+- `commitSignal` returns incrementing signalIds starting at 0
+- `getSignal` returns correct fields after commit
+- `revealSignal` reverts with `NotSignalAgent` when called by wrong address
+- `revealSignal` reverts with `HashMismatch` on wrong payload/salt combo
+- `revealSignal` reverts with `SignalExpired` after expiration timestamp
+- `revealSignal` succeeds and sets `revealed = true` with correct payload
+- `getAgentSignalIds` returns all signal IDs for a given agent
+
+**`SubscriptionPass.test.ts`**
+
+Deploy with a mock ERC-20 as USDT. Mint test USDT to subscribers and approve the contract.
+
+- `purchase(1)` mints tier 1 token, sets expiry to now + 7 days
+- `isActive` returns `true` immediately after purchase
+- `isActive` returns `false` after warping time past expiry (use `time.increase`)
+- Purchasing while active extends from current expiry, not from now
+- Soulbound: `safeTransferFrom` between two non-zero addresses reverts with `TransferNotAllowed`
+- `withdrawRevenue` transfers full USDT balance to owner
+
+**`ClientAgentVault.test.ts`**
+
+- `execute` reverts with `Unauthorized()` when called by non-agent
+- `execute` succeeds within budget and emits `CallExecuted`
+- `execute` reverts with `BudgetExceeded` when value exceeds remaining window budget
+- Window resets correctly after `timeWindow` seconds (use `time.increase`)
+- `executeBatch` reverts entire batch atomically if any call fails
+- `TargetNotWhitelisted` is thrown for a target not in any rule's `targetContracts`
+- Zero-value calls bypass budget checks entirely
+
+---
+
+### LAYER 2 — API Tests (`artifacts/api-server/test/`)
+
+Use `supertest` against the Express app with a seeded test database. Mock the Kite RPC calls (`lib/kite.ts`) with `vi.mock`.
+
+**`agents.test.ts`**
+
+- `GET /api/agents` returns empty array on clean DB
+- `POST /api/agents` with valid body returns 201 and created agent
+- `POST /api/agents` with duplicate `walletAddress` returns 409
+- `POST /api/agents` with missing required fields returns 400
+- `GET /api/agents/:id` returns 404 for unknown id
+- `PATCH /api/agents/:id` updates fields and returns updated agent
+- `DELETE /api/agents/:id` returns 204 and agent is gone from subsequent GET
+- `GET /api/agents/:id/stats` returns zeroed stats for agent with no signals
+- `GET /api/agents/:id/signals` returns only signals belonging to that agent
+
+**`agents.reputation.test.ts`**
+
+Mock `getOnChainReputation` from `lib/kite.ts`.
+
+- Returns combined on-chain + off-chain data when registry is deployed
+- Returns `onChain: null, registryNotDeployed: true` when `getOnChainReputation` returns null
+- Returns 404 when agent does not exist
+- Response validates against `GetAgentReputationResponse` Zod schema
+
+**`signals.test.ts`**
+
+- `POST /api/signals` with valid body returns 201, agent `totalSignals` increments
+- `POST /api/signals` with duplicate `signalHash` returns 409
+- `POST /api/signals` with non-existent `agentId` returns 400
+- `GET /api/signals` with `?status=pending` filters correctly
+- `GET /api/signals` with `?asset=BTC` filters correctly
+- `GET /api/signals/:id/settle` with already-settled signal returns 400 with correct message
+- Settling an accurate signal updates agent `accuracyRate` correctly in DB
+- Settling triggers `broadcastSignal` and `broadcastReputationUpdate` (spy on websocket module)
+
+**`subscribers.test.ts`**
+
+- `POST /subscribers` creates subscriber record
+- `POST /subscribers` with same sessionToken upserts (updates tier and expiry)
+- `POST /subscribers/verify` returns `valid: false` for unknown token
+- `POST /subscribers/verify` returns `valid: false` for expired token
+- `POST /subscribers/verify` returns `valid: true` with correct fields for active token
+
+**`stats.test.ts`**
+
+- `GET /api/stats` returns all zeroed counts on clean DB
+- After seeding agents and signals, counts reflect DB state correctly
+
+---
+
+### LAYER 3 — Scorer Tests (`artifacts/scorer/test/`)
+
+Mock all external dependencies: Claude API (`fetch`), ethers Contract, and the settlement API.
+
+**`scorer.test.ts`**
+
+Setup: `vi.mock` on `fetch` (for Claude + price API + settlement API), `vi.mock` on `ethers` for the `ReputationRegistry` contract call.
+
+- **Happy path:** expired pending signal → price fetched → Claude returns valid JSON verdict → settlement API called with correct body → `recordSettlement` called on mock contract with correct args → signal logged as processed
+- **Claude JSON parse failure:** Claude returns malformed JSON → rule-based fallback activates → settlement still posts with fallback accurate/pnlBps values
+- **Claude API error (non-200):** falls back to rule-based scoring, does not throw
+- **Rule-based long signal:** closingPrice > entryPrice → `accurate: true`, pnlBps positive
+- **Rule-based long signal:** closingPrice < entryPrice → `accurate: false`, pnlBps negative
+- **Rule-based short signal:** closingPrice < entryPrice → `accurate: true`, pnlBps positive
+- **Settlement API failure:** scorer logs error, does NOT throw, continues to next signal
+- **On-chain write failure:** `recordSettlement` rejects → scorer logs error, DB settlement already posted, process continues
+- **No expired signals:** poll cycle completes without error, no API calls made
+- **Signal missing `onChainTxHash`:** on-chain write is skipped with a warning log, DB settlement still proceeds
+- **Duplicate processing guard:** same signal should not be processed twice in one cycle
+
+---
+
+### LAYER 4 — End-to-End Integration Test (`test/e2e/`)
+
+Run against a real Express server + test PostgreSQL database. Mock only the Kite RPC and Claude API.
+
+**`full-flow.test.ts`**
+
+Seed: one agent with a known walletAddress. Mock `getOnChainReputation` to return a realistic struct. Mock Claude to return `{ accurate: true, pnlBps: 420, reasoning: "price hit target" }`.
+
+1. `POST /api/agents` — register agent, assert 201
+2. `POST /api/signals` — commit signal for that agent, assert 201, `status: pending`
+3. `GET /api/signals/:id` — assert signal exists and is pending
+4. `GET /api/agents/:id/stats` — assert `totalSignals: 1`, `pendingSignals: 1`
+5. `POST /api/signals/:id/settle` — settle with `accurate: true, pnlBps: 420`, assert 200
+6. `GET /api/signals/:id` — assert `status: settled`, `accurate: true`, `pnlBps: 420`
+7. `GET /api/agents/:id/stats` — assert `settledSignals: 1`, `accurateSignals: 1`, `accuracyRate: 10000`
+8. `GET /api/agents/:id/reputation` — assert combined response shape is valid, `registryNotDeployed` is absent when mock returns data
+9. `POST /subscribers` — register subscriber with session token
+10. `POST /subscribers/verify` — assert `valid: true` with correct tier
+11. WebSocket: connect with valid session token, assert `connected` message received, settle a new signal and assert `reputation_update` event is broadcast
+
+---
+
+**General rules:**
+- Every test must be isolated — seed only what that test needs, clean up after
+- No real network calls anywhere — mock fetch, ethers, and all external HTTP
+- Use `beforeEach` to reset mocks, not `beforeAll`
+- All tests must pass with `vitest run` from the repo root
+- Test file names must mirror the source file they test
+- Aim for one `describe` block per route or function, one `it` per behaviour
+- Do not test implementation details — test inputs and outputs only
+
+Build Layer 1 first (Hardhat tests, run with `npx hardhat test`), then Layer 2, then Layer 3, then Layer 4.
