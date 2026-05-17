@@ -5,26 +5,15 @@ import http from "node:http";
 import { db, agentsTable, signalsTable, subscribersTable } from "@workspace/db";
 import { GetAgentReputationResponse } from "@workspace/api-zod";
 
-// ─── Mock RPC and AI ──────────────────────────────────────────────────────────
-vi.mock("../../artifacts/api-server/src/lib/kite", () => ({
-  getOnChainReputation: vi.fn().mockResolvedValue({
-    totalSignals: 5n,
-    settledSignals: 4n,
-    accurateSignals: 3n,
-    cumulativePnlBps: 840n,
-    reputationScore: 7500n,
-  }),
-  checkOnChainSubscription: vi.fn().mockResolvedValue(null),
-  getOnChainSignal: vi.fn().mockResolvedValue(null),
-  getSignalRegistry: vi.fn(),
-  getReputationRegistry: vi.fn(),
-  getSubscriptionPass: vi.fn(),
-}));
-
+// Let websocket pass through to real implementation so WS tests work
 vi.mock("../../artifacts/api-server/src/lib/websocket", async (importOriginal) => {
   const original = await importOriginal<typeof import("../../artifacts/api-server/src/lib/websocket")>();
   return { ...original };
 });
+
+// NOTE: kite.ts is NOT mocked here — getOnChainReputation makes a real Kite testnet call
+// to the deployed ReputationRegistry. All other kite helpers (checkOnChainSubscription,
+// getOnChainSignal) are only used by routes not exercised in this flow.
 
 let server: http.Server;
 let wsPort: number;
@@ -38,7 +27,6 @@ async function cleanAll(): Promise<void> {
 
 beforeAll(async () => {
   await cleanAll();
-  // Import app after mocks are set
   const { default: app } = await import("../../artifacts/api-server/src/app");
   const { createWebSocketServer } = await import("../../artifacts/api-server/src/lib/websocket");
   server = http.createServer(app);
@@ -122,11 +110,17 @@ describe("Full end-to-end flow", () => {
     expect(res.body.accuracyRate).toBe(10000);
   });
 
-  it("8. GET /api/agents/:id/reputation — valid shape, no registryNotDeployed", async () => {
+  it("8. GET /api/agents/:id/reputation — real on-chain call: valid shape, no registryNotDeployed", async () => {
+    // This test makes a REAL call to the deployed ReputationRegistry on Kite testnet.
+    // The agent wallet has no on-chain history, so onChain fields are all zero — but
+    // the contract is deployed, so registryNotDeployed must be absent.
     const res = await request(baseUrl).get(`/api/agents/${agentId}/reputation`);
     expect(res.status).toBe(200);
     expect(res.body.registryNotDeployed).toBeUndefined();
     expect(res.body.onChain).not.toBeNull();
+    // Fresh wallet → all counters are 0
+    expect(res.body.onChain.totalSignals).toBe(0);
+    expect(res.body.onChain.reputationScore).toBe(0);
 
     const parsed = GetAgentReputationResponse.safeParse(res.body);
     expect(parsed.success).toBe(true);
@@ -173,7 +167,6 @@ describe("Full end-to-end flow", () => {
 
     expect(messages).toContain("connected");
 
-    // Commit and settle a second signal to trigger reputation_update
     const sig2Res = await request(baseUrl).post("/api/signals").send({
       agentId,
       asset: "ETH",
