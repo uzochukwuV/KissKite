@@ -1,0 +1,344 @@
+## What Should Be In the Frontend
+
+Six pages, one real-time data layer, one wallet integration layer. Here's the full breakdown before the prompt:
+
+- **Landing** — platform stats, hero, how it works
+- **Leaderboard** — agents ranked by on-chain reputation score
+- **Agent Profile** — signals, on-chain vs off-chain reputation, accuracy chart
+- **Live Feed** — real-time WebSocket signal stream (subscribers only)
+- **Subscribe** — wallet connect, USDT approval, on-chain pass purchase
+- **Signal Detail** — commit hash, reveal status, AI scorer reasoning, settlement outcome
+
+---
+
+## Frontend Prompt
+
+---
+
+You are building the frontend for **Kite Signal Platform** — an autonomous AI trading signal marketplace on Kite chain. The backend is fully built. Your job is to build a production-quality Next.js frontend that connects to it.
+
+**Tech stack — use exactly these, no substitutions:**
+- Next.js 14 App Router (`app/` directory)
+- TypeScript strict mode
+- Tailwind CSS
+- shadcn/ui for all UI primitives (install components as needed)
+- wagmi v2 + viem for all wallet and contract interactions
+- TanStack Query (react-query) v5 for all server state
+- Recharts for all charts
+- `ws` or native browser WebSocket for the live signal stream
+- pino-browser or `console` for client-side logging (keep it minimal)
+
+**Design direction:**
+Dark theme. Deep navy/slate base (`#0a0f1e`), bright cyan/emerald accents for positive signals, red for negative, amber for pending. Think Bloomberg terminal meets modern DeFi — dense information, clean typography, no unnecessary decoration. Font: Inter. Every number that changes should animate (use `framer-motion` number counters). Glassmorphism cards with subtle borders. The UI should feel like a professional trading tool, not a consumer app.
+
+**Environment variables (all prefixed `NEXT_PUBLIC_`):**
+```
+NEXT_PUBLIC_API_BASE_URL=          # Express API base e.g. https://api.kite-signal.io
+NEXT_PUBLIC_WS_URL=                # WebSocket e.g. wss://api.kite-signal.io/ws
+NEXT_PUBLIC_KITE_RPC=              # https://rpc-testnet.gokite.ai
+NEXT_PUBLIC_CHAIN_ID=              # 2368
+NEXT_PUBLIC_USDT_ADDRESS=          # 0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63
+NEXT_PUBLIC_SUBSCRIPTION_PASS_ADDRESS=
+NEXT_PUBLIC_SIGNAL_REGISTRY_ADDRESS=
+NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS=
+```
+
+**Kite chain config for wagmi:**
+```ts
+const kiteTestnet = defineChain({
+  id: 2368,
+  name: 'Kite Testnet',
+  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+  rpcUrls: { default: { http: ['https://rpc-testnet.gokite.ai'] } },
+})
+```
+
+---
+
+### SETUP
+
+**`app/layout.tsx`**
+- Wrap entire app in wagmi `WagmiProvider` + TanStack `QueryClientProvider`
+- Dark background globally (`bg-[#0a0f1e]`)
+- Global `<Navbar />` component
+- Inter font via `next/font`
+
+**`components/Navbar.tsx`**
+- Left: "KITE SIGNAL" wordmark in cyan, monospace
+- Right: `<WalletButton />` component
+- On desktop: nav links to Leaderboard, Signals, Subscribe
+- Sticky top, blur backdrop, subtle bottom border
+
+**`components/WalletButton.tsx`**
+- Uses wagmi `useConnect`, `useDisconnect`, `useAccount`
+- Disconnected: "Connect Wallet" button in cyan outline style
+- Connected: shows truncated address + current network name + disconnect option in a dropdown
+- If connected to wrong network, shows "Switch to Kite Testnet" button that calls `useSwitchChain`
+
+---
+
+### PAGE 1 — Landing (`app/page.tsx`)
+
+**Hero section:**
+- Headline: "AI Trading Signals. Verified On-Chain."
+- Subheadline: one sentence explaining the commit-reveal model and reputation system
+- Two CTAs: "View Leaderboard" and "Subscribe Now"
+- Animated background: subtle grid or particle effect using CSS only
+
+**Platform stats bar** — fetches `GET /api/stats`, auto-refreshes every 30s:
+- Total Agents (animated counter)
+- Active Agents
+- Total Signals
+- Settled Signals
+- Platform Accuracy Rate (shown as `XX.XX%` converted from bps)
+- Total Subscribers
+- Display as a horizontal strip of stat cards with cyan accent numbers
+
+**How It Works section** — three steps with icons:
+1. "Agents Commit" — AI agents hash and commit signals on Kite chain before the market moves
+2. "AI Scores" — Our scorer node evaluates outcomes using live price data and Claude
+3. "Reputation On-Chain" — Every settlement updates the agent's immutable reputation on Kite
+
+**Live activity ticker** — WebSocket connected, shows last 5 `signal` and `reputation_update` events scrolling horizontally like a news ticker at the bottom of the page. No auth required to see this ticker (show asset + direction + agent address truncated only).
+
+---
+
+### PAGE 2 — Leaderboard (`app/leaderboard/page.tsx`)
+
+Fetches `GET /api/agents` then for each agent fetches `GET /api/agents/:id/reputation`. Rank by `onChain.reputationScore` descending, fall back to `offChain.accuracyRate` if registry not deployed.
+
+**Table columns:**
+- Rank (#1, #2…) with medal emoji for top 3
+- Agent Name + truncated wallet address (copy-to-clipboard on click)
+- Reputation Score (bps displayed as `XX.XX%`)
+- Total Signals
+- Accuracy Rate
+- Avg PnL (bps, green if positive, red if negative)
+- Status badge (active / inactive / suspended)
+- "View Profile" link
+
+**Above the table:**
+- Search/filter by agent name or wallet
+- Filter by status dropdown
+- Sort toggle: by Reputation Score or by Total Signals
+
+**On-chain badge:** if `onChain` data is present, show a small "⛓ On-Chain" badge next to the score. If `registryNotDeployed`, show "Off-Chain" in amber.
+
+Use TanStack Query with `staleTime: 60_000`. Show skeleton loaders while fetching.
+
+---
+
+### PAGE 3 — Agent Profile (`app/agents/[id]/page.tsx`)
+
+Fetches `GET /api/agents/:id`, `GET /api/agents/:id/stats`, `GET /api/agents/:id/reputation`, `GET /api/agents/:id/signals`.
+
+**Header card:**
+- Agent name + wallet address (with Etherscan/Kite explorer link)
+- Status badge
+- Reputation Score (large, cyan, animated)
+- "⛓ Verified On-Chain" if onChain data present
+- Created date
+
+**Stats row — 6 cards:**
+- Total Signals
+- Settled Signals
+- Accurate Signals
+- Accuracy Rate (%)
+- Avg PnL (bps)
+- Pending Signals
+
+**Reputation comparison panel:**
+Two columns side by side — "On-Chain" and "Off-Chain" — showing the same metrics from both sources. If they differ (e.g. DB updated but chain write pending), highlight the diff in amber. This is a key trust visualization — it shows the system is honest.
+
+**Accuracy over time chart:**
+Line chart (Recharts) showing accuracy rate across the last N signals. X-axis: signal index. Y-axis: rolling accuracy %. Use the signals array to compute this client-side.
+
+**Signal history table:**
+Columns: Asset, Direction (LONG/SHORT badge), Entry Price, Target Price, Status, Accurate (✓/✗), PnL bps, Committed At, Settled At, "View" link. Paginate client-side, 10 per page. Color rows: green tint for accurate settled, red tint for inaccurate, amber for pending.
+
+---
+
+### PAGE 4 — Live Signal Feed (`app/signals/page.tsx`)
+
+**Auth gate:** check if user has an active subscription before showing the feed. Do this by:
+1. Check wagmi `useAccount` for connected wallet
+2. Read `SubscriptionPass.isActive(walletAddress)` via wagmi `useReadContract`
+3. If not active: show "Subscribe to Access" CTA linking to `/subscribe`
+4. If active: show tier badge (Basic/Pro/Elite) and expiry date
+
+**WebSocket connection:**
+- On mount, connect to `NEXT_PUBLIC_WS_URL` with header `x-kite-session-token: <sessionToken>`
+- Session token is stored in `localStorage` after subscription purchase (see Subscribe page)
+- Show connection status indicator (green dot = connected, red = disconnected, amber = reconnecting)
+- Auto-reconnect with exponential backoff on disconnect
+
+**Live feed panel:**
+- New signals animate in from the top (framer-motion `AnimatePresence`)
+- Each signal card shows: Asset, Direction badge (green LONG / red SHORT), Entry Price, Target Price, Stop Price, Expiration countdown timer, Agent name + reputation score, Signal Hash (truncated, links to SignalRegistry on Kite explorer), Status badge
+- `reputation_update` events show as toast notifications (shadcn `useToast`): "Agent 0x1234… reputation updated to 87.5%"
+- Keep last 50 signals in state, discard older ones
+
+**Filters sidebar:**
+- Filter by asset (BTC, ETH, SOL etc)
+- Filter by direction (LONG / SHORT)
+- Filter by status (pending / settled / expired)
+- Applied client-side against the in-memory signal list
+
+**Signal detail modal:**
+Click any signal card → modal opens showing full detail including AI scorer reasoning (from `settledAt` and `accurate` fields), on-chain commit hash, reveal status, and PnL outcome.
+
+---
+
+### PAGE 5 — Subscribe (`app/subscribe/page.tsx`)
+
+**Wallet gate:** if not connected, show connect wallet prompt.
+
+**Current subscription status:**
+Read `SubscriptionPass.isActive(address)` via `useReadContract`. If active, show tier, expiry, and "Extend" option. If not active, show "No Active Pass".
+
+**Tier cards — three cards side by side:**
+
+Each card shows:
+- Tier name (Basic / Pro / Elite)
+- Price (1 / 5 / 15 USDT)
+- Duration (7 days / 7 days / 30 days)
+- Feature list
+- "Purchase" button
+
+Purchase flow (two-step, handle both transactions):
+
+**Step 1 — USDT Approval:**
+- Read current allowance via `useReadContract` on USDT `allowance(user, subscriptionPassAddress)`
+- If allowance < price: show "Approve USDT" button
+- Call `useWriteContract` on USDT `approve(subscriptionPassAddress, price)`
+- Show pending spinner, wait for confirmation
+
+**Step 2 — Purchase Pass:**
+- Call `useWriteContract` on `SubscriptionPass.purchase(tier)`
+- Show pending spinner, wait for confirmation
+- On success: store session token in localStorage (generate a UUID client-side, POST to `/api/subscribers` to register it with the wallet + tier + expiresAt computed from tier duration)
+- Show success state with confetti (use `canvas-confetti`)
+- Redirect to `/signals` after 2 seconds
+
+**Transaction status UI:**
+Use wagmi `useWaitForTransactionReceipt` for both steps. Show hash with Kite explorer link while pending.
+
+---
+
+### PAGE 6 — Signal Detail (`app/signals/[id]/page.tsx`)
+
+Fetches `GET /api/signals/:id` and `GET /api/agents/:id` for the agent.
+
+**Commit record panel:**
+- Signal Hash (full, monospace)
+- On-Chain Signal ID (if present in `onChainTxHash`)
+- Link to `SignalRegistry` on Kite explorer
+- Committed At timestamp
+- Revealed: yes/no badge
+- Expiration with countdown if still pending
+
+**Prediction panel:**
+- Asset, Direction, Entry Price, Target Price, Stop Price
+- Visual price range bar: entry → stop (red zone) and entry → target (green zone), with a marker for current price if signal is pending
+
+**Outcome panel (if settled):**
+- Accurate: ✓ or ✗ (large)
+- PnL in bps (green/red)
+- AI Scorer Reasoning (full text from DB)
+- Settled At timestamp
+- On-chain reputation tx link if available
+
+**Agent mini-card:**
+- Agent name, wallet, current reputation score
+- Link to full agent profile
+
+---
+
+### SHARED COMPONENTS
+
+**`components/SignalCard.tsx`** — used in feed and leaderboard agent signals table. Props: `signal`, `showAgent?: boolean`.
+
+**`components/ReputationBadge.tsx`** — shows score as colored badge. Green > 7000 bps, amber 4000–7000, red < 4000.
+
+**`components/CountdownTimer.tsx`** — takes a unix timestamp, renders live MM:SS or DD:HH:MM countdown, updates every second.
+
+**`components/StatCard.tsx`** — label + animated number value + optional delta indicator.
+
+**`components/OnChainBadge.tsx`** — "⛓ On-Chain" or "Off-Chain" badge depending on data source.
+
+**`hooks/useWebSocket.ts`** — custom hook managing WebSocket lifecycle: connect, disconnect, reconnect, message parsing, connection status. Returns `{ messages, status, send }`. Used by the signals feed page and the landing ticker.
+
+**`hooks/useSubscriptionStatus.ts`** — wraps `useReadContract` on `SubscriptionPass.isActive`, returns `{ active, tier, expiresAt, isLoading }`. Used by feed page and navbar to show subscription state.
+
+**`hooks/usePlatformStats.ts`** — wraps TanStack Query fetch of `GET /api/stats` with 30s refetch interval.
+
+---
+
+### DATA & STATE RULES
+
+- All API fetching via TanStack Query. No `useEffect` + `fetch` patterns.
+- WebSocket state kept in a React context (`WebSocketContext`) wrapping the app so the live ticker on landing and the feed page share one connection.
+- Wallet state from wagmi only — no manual storage of addresses.
+- Session token stored in `localStorage` under key `kite_session_token`. Read on mount to auto-reconnect WebSocket.
+- All prices and PnL displayed with appropriate decimal places (prices: 2dp for stables, 4dp for others; bps: always show as percentage `XX.XX%`).
+- Skeleton loaders (shadcn `Skeleton`) on every data-dependent render. Never show empty states without them during loading.
+- Error boundaries on every page. API errors show a shadcn `Alert` with the error message, not a crashed UI.
+
+---
+
+### FILE STRUCTURE
+
+```
+app/
+  layout.tsx
+  page.tsx                    # Landing
+  leaderboard/page.tsx
+  agents/[id]/page.tsx
+  signals/page.tsx            # Live feed
+  signals/[id]/page.tsx       # Signal detail
+  subscribe/page.tsx
+components/
+  Navbar.tsx
+  WalletButton.tsx
+  SignalCard.tsx
+  ReputationBadge.tsx
+  CountdownTimer.tsx
+  StatCard.tsx
+  OnChainBadge.tsx
+hooks/
+  useWebSocket.ts
+  useSubscriptionStatus.ts
+  usePlatformStats.ts
+lib/
+  wagmi.ts                    # chain config + wagmi config
+  api.ts                      # typed fetch wrappers for all API routes
+  abis.ts                     # import ABIs from @workspace/contracts
+  utils.ts                    # bps formatter, address truncator, price formatter
+context/
+  WebSocketContext.tsx
+```
+
+**`lib/api.ts`** — write a typed wrapper for every API endpoint used by the frontend. No raw `fetch` calls outside this file. Each function takes typed params and returns the Zod-parsed response using the schemas from `@workspace/api-zod`.
+
+**`lib/wagmi.ts`** — export the wagmi config with `kiteTestnet` chain, `http()` transport, and `injected()` + `walletConnect()` connectors.
+
+---
+
+### BUILD ORDER
+
+Build in this exact order:
+
+1. Project setup — Next.js init, install all dependencies, configure Tailwind, shadcn init, wagmi config, TanStack Query provider
+2. `lib/` layer — `wagmi.ts`, `api.ts`, `abis.ts`, `utils.ts`
+3. `hooks/` layer — all three hooks
+4. `WebSocketContext.tsx`
+5. Shared components — Navbar, WalletButton, SignalCard, ReputationBadge, CountdownTimer, StatCard, OnChainBadge
+6. Landing page — stats bar first, then hero, then how it works, then ticker
+7. Leaderboard page
+8. Subscribe page — approval flow first, then purchase, then success state
+9. Live feed page — WebSocket connection first, then signal cards, then filters
+10. Agent profile page
+11. Signal detail page
+12. Final pass — loading states, error boundaries, mobile responsiveness on all pages
+
+Do not move to the next item until the current one compiles and renders correctly.
