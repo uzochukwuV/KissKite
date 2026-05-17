@@ -7,7 +7,7 @@
  *
  * Env vars override the JSON values at runtime, so you can point the backend at
  * a re-deployment without rebuilding the package:
- *   SIGNAL_REGISTRY_ADDRESS, SUBSCRIPTION_PASS_ADDRESS
+ *   SIGNAL_REGISTRY_ADDRESS, SUBSCRIPTION_PASS_ADDRESS, REPUTATION_REGISTRY_ADDRESS
  */
 
 import recorded from "./kite-testnet.json" with { type: "json" };
@@ -17,6 +17,7 @@ export interface Deployments {
   chainId:          number;
   signalRegistry:   string;
   subscriptionPass: string;
+  reputationRegistry: string;
   usdtToken:        string;
 }
 
@@ -25,5 +26,6 @@ export const DEPLOYMENTS: Deployments = {
   chainId:          recorded.chainId,
   signalRegistry:   process.env.SIGNAL_REGISTRY_ADDRESS   || recorded.signalRegistry,
   subscriptionPass: process.env.SUBSCRIPTION_PASS_ADDRESS || recorded.subscriptionPass,
+  reputationRegistry: process.env.REPUTATION_REGISTRY_ADDRESS || recorded.reputationRegistry || "",
   usdtToken:        recorded.usdtToken,
 };

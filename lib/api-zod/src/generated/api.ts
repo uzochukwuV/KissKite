@@ -122,6 +122,31 @@ export const DeleteAgentParams = zod.object({
   "id": zod.coerce.number()
 })
 
+/**
+ * @summary Get combined on-chain and off-chain reputation for an agent
+ */
+export const GetAgentReputationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAgentReputationResponse = zod.object({
+  "agentId": zod.number(),
+  "walletAddress": zod.string(),
+  "onChain": zod.object({
+    "reputationScore": zod.number(),
+    "totalSignals": zod.number(),
+    "settledSignals": zod.number(),
+    "accurateSignals": zod.number(),
+    "cumulativePnlBps": zod.number()
+  }).nullable(),
+  "offChain": zod.object({
+    "accuracyRate": zod.number(),
+    "totalSignals": zod.number(),
+    "settledSignals": zod.number()
+  }),
+  "registryNotDeployed": zod.boolean().optional()
+})
+
 
 /**
  * @summary List all signals for a specific agent

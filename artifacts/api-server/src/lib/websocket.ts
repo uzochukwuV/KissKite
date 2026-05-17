@@ -124,6 +124,31 @@ export function broadcastSettlement(signal: Signal): void {
   logger.info({ signalId: signal.id, recipients: sent }, "Settlement broadcast");
 }
 
+export function broadcastReputationUpdate(
+  agentId: string,
+  walletAddress: string,
+  reputationScore: number
+): void {
+  const payload = JSON.stringify({
+    type: "reputation_update",
+    data: { agentId, walletAddress, reputationScore },
+    ts: Date.now(),
+  });
+
+  let sent = 0;
+  for (const client of clients) {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(payload);
+      sent++;
+    }
+  }
+
+  logger.info(
+    { agentId, walletAddress, reputationScore, recipients: sent },
+    "Reputation update broadcast"
+  );
+}
+
 export function getConnectedCount(): number {
   return clients.size;
 }
