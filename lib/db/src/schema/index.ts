@@ -36,15 +36,21 @@ export const signalsTable = pgTable("signals", {
   agentId:        integer("agent_id").notNull().references(() => agentsTable.id, { onDelete: "cascade" }),
   asset:          varchar("asset", { length: 20 }).notNull(),        // e.g. "ETH", "BTC"
   direction:      signalDirectionEnum("direction").notNull(),
+  entryPrice:     text("entry_price"),                               // stored as string to preserve precision
   targetPrice:    text("target_price").notNull(),                    // stored as string to preserve precision
+  stopPrice:      text("stop_price"),                                // stored as string to preserve precision
   expiration:     timestamp("expiration", { withTimezone: true }).notNull(),
   signalHash:     varchar("signal_hash", { length: 66 }).notNull().unique(), // 0x + 64 hex
+  rawPayload:     text("raw_payload"),                                // payload revealed on-chain
+  revealSalt:     text("reveal_salt"),                                // salt used for commit hash
   onChainTxHash:  varchar("on_chain_tx_hash", { length: 66 }),
   onChainId:      bigint("on_chain_id", { mode: "number" }),
+  revealTxHash:   varchar("reveal_tx_hash", { length: 66 }),
   status:         signalStatusEnum("status").notNull().default("pending"),
   accurate:       boolean("accurate"),
   pnlBps:         integer("pnl_bps"),                               // result in basis points
   stakeAmount:    text("stake_amount"),                              // wei as string
+  expiredReason:  text("expired_reason"),
   createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   settledAt:      timestamp("settled_at", { withTimezone: true }),
 });

@@ -8,14 +8,17 @@ import {
   UpdateAgentParams,
   DeleteAgentParams,
   GetAgentStatsParams,
+  GetAgentReputationParams,
   GetAgentSignalsParams,
   ListAgentsQueryParams,
   ListAgentsResponse,
   GetAgentResponse,
   UpdateAgentResponse,
   GetAgentStatsResponse,
+  GetAgentReputationResponse,
   GetAgentSignalsResponse,
 } from "@workspace/api-zod";
+import { getOnChainReputation } from "../lib/kite";
 
 const router: IRouter = Router();
 
@@ -51,26 +54,6 @@ router.post("/agents", async (req, res): Promise<void> => {
 
   const [agent] = await db.insert(agentsTable).values(parsed.data).returning();
   res.status(201).json(GetAgentResponse.parse(agent));
-});
-
-router.get("/agents/:id", async (req, res): Promise<void> => {
-  const params = GetAgentParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
-
-  const [agent] = await db
-    .select()
-    .from(agentsTable)
-    .where(eq(agentsTable.id, params.data.id));
-
-  if (!agent) {
-    res.status(404).json({ error: "Agent not found" });
-    return;
-  }
-
-  res.json(GetAgentResponse.parse(agent));
 });
 
 router.patch("/agents/:id", async (req, res): Promise<void> => {
@@ -118,6 +101,54 @@ router.delete("/agents/:id", async (req, res): Promise<void> => {
   }
 
   res.sendStatus(204);
+});
+
+
+router.get("/agents/:id/reputation", async (req, res): Promise<void> => {
+  const params = GetAgentReputationParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [agent] = await db
+    .select()
+    .from(agentsTable)
+    .where(eq(agentsTable.id, params.data.id));
+
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found" });
+    return;
+  }
+
+  try {
+    const onChainReputation = await getOnChainReputation(agent.walletAddress);
+    const onChain = onChainReputation
+      ? {
+          reputationScore: Number(onChainReputation.reputationScore),
+          totalSignals: Number(onChainReputation.totalSignals),
+          settledSignals: Number(onChainReputation.settledSignals),
+          accurateSignals: Number(onChainReputation.accurateSignals),
+          cumulativePnlBps: Number(onChainReputation.cumulativePnlBps),
+        }
+      : null;
+
+    res.json(
+      GetAgentReputationResponse.parse({
+        agentId: agent.id,
+        walletAddress: agent.walletAddress,
+        onChain,
+        offChain: {
+          accuracyRate: agent.accuracyRate,
+          totalSignals: agent.totalSignals,
+          settledSignals: agent.settledSignals,
+        },
+        ...(onChain ? {} : { registryNotDeployed: true }),
+      })
+    );
+  } catch (err) {
+    res.status(502).json({ error: "Failed to fetch on-chain reputation" });
+  }
 });
 
 router.get("/agents/:id/signals", async (req, res): Promise<void> => {
@@ -179,6 +210,26 @@ router.get("/agents/:id/stats", async (req, res): Promise<void> => {
       pendingSignals: row.pending,
     })
   );
+});
+
+router.get("/agents/:id", async (req, res): Promise<void> => {
+  const params = GetAgentParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [agent] = await db
+    .select()
+    .from(agentsTable)
+    .where(eq(agentsTable.id, params.data.id));
+
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found" });
+    return;
+  }
+
+  res.json(GetAgentResponse.parse(agent));
 });
 
 export default router;

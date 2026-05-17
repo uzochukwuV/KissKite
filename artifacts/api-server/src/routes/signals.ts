@@ -2,16 +2,19 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, signalsTable, agentsTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { broadcastSignal } from "../lib/websocket";
+import { broadcastReputationUpdate, broadcastSignal } from "../lib/websocket";
 import {
   CommitSignalBody,
   SettleSignalBody,
+  ExpireSignalBody,
   GetSignalParams,
   SettleSignalParams,
+  ExpireSignalParams,
   ListSignalsQueryParams,
   ListSignalsResponse,
   GetSignalResponse,
   SettleSignalResponse,
+  ExpireSignalResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -110,6 +113,47 @@ router.get("/signals/:id", async (req, res): Promise<void> => {
   res.json(GetSignalResponse.parse(signal));
 });
 
+router.post("/signals/:id/expire", async (req, res): Promise<void> => {
+  const params = ExpireSignalParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const parsed = ExpireSignalBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(signalsTable)
+    .where(eq(signalsTable.id, params.data.id));
+
+  if (!existing) {
+    res.status(404).json({ error: "Signal not found" });
+    return;
+  }
+
+  if (existing.status !== "pending") {
+    res.status(400).json({ error: `Signal is already ${existing.status}` });
+    return;
+  }
+
+  const [signal] = await db
+    .update(signalsTable)
+    .set({
+      status: "expired",
+      expiredReason: parsed.data.reason,
+      settledAt: new Date(),
+    })
+    .where(eq(signalsTable.id, params.data.id))
+    .returning();
+
+  res.json(ExpireSignalResponse.parse(signal));
+});
+
 router.post("/signals/:id/settle", async (req, res): Promise<void> => {
   const params = SettleSignalParams.safeParse(req.params);
   if (!params.success) {
@@ -167,14 +211,26 @@ router.post("/signals/:id/settle", async (req, res): Promise<void> => {
   const accuracyRate =
     row.count > 0 ? Math.round((row.accurate / row.count) * 10000) : 0;
 
-  await db
+  const [updatedAgent] = await db
     .update(agentsTable)
     .set({
       settledSignals: sql`${agentsTable.settledSignals} + 1`,
       accuracyRate,
       updatedAt: new Date(),
     })
-    .where(eq(agentsTable.id, existing.agentId));
+    .where(eq(agentsTable.id, existing.agentId))
+    .returning({
+      id: agentsTable.id,
+      walletAddress: agentsTable.walletAddress,
+    });
+
+  if (updatedAgent) {
+    broadcastReputationUpdate(
+      String(updatedAgent.id),
+      updatedAgent.walletAddress,
+      accuracyRate
+    );
+  }
 
   res.json(SettleSignalResponse.parse(signal));
 });

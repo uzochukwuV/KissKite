@@ -16,8 +16,10 @@ import { ethers } from "ethers";
 import {
   SignalRegistryABI,
   SubscriptionPassABI,
+  ReputationRegistryABI,
   DEPLOYMENTS,
   type OnChainSignal,
+  type OnChainReputation,
   type SubscriptionPassStatus,
 } from "@workspace/contracts";
 import { logger } from "./logger.js";
@@ -63,6 +65,17 @@ function requireSubscriptionPassAddress(): string {
   return addr;
 }
 
+function requireReputationRegistryAddress(): string {
+  const addr = DEPLOYMENTS.reputationRegistry;
+  if (!addr) {
+    throw new Error(
+      "ReputationRegistry address is not set. " +
+      "Deploy contracts first, then set REPUTATION_REGISTRY_ADDRESS in Secrets."
+    );
+  }
+  return addr;
+}
+
 // ─── Signal Registry ──────────────────────────────────────────────────────────
 
 /**
@@ -87,6 +100,20 @@ export function getSubscriptionPass(): ethers.Contract {
   return new ethers.Contract(
     requireSubscriptionPassAddress(),
     SubscriptionPassABI,
+    getProvider()
+  );
+}
+
+// ─── Reputation Registry ─────────────────────────────────────────────────────
+
+/**
+ * Returns a read-only Contract instance for ReputationRegistry.
+ * Use for view calls: getReputation, getScore, signalRecorded.
+ */
+export function getReputationRegistry(): ethers.Contract {
+  return new ethers.Contract(
+    requireReputationRegistryAddress(),
+    ReputationRegistryABI,
     getProvider()
   );
 }
@@ -153,4 +180,40 @@ export async function getOnChainSignal(
     ];
 
   return { hash, agent, committedAt, expiration, revealed };
+}
+
+/**
+ * Fetch an agent reputation record from the chain.
+ *
+ * Returns null ONLY when the contract is not yet deployed.
+ * Throws on RPC/contract errors — callers must handle explicitly.
+ */
+export async function getOnChainReputation(
+  walletAddress: string
+): Promise<OnChainReputation | null> {
+  if (!DEPLOYMENTS.reputationRegistry) {
+    logger.warn(
+      { walletAddress },
+      "ReputationRegistry not deployed — skipping on-chain reputation fetch"
+    );
+    return null;
+  }
+
+  const registry = getReputationRegistry();
+  const [totalSignals, settledSignals, accurateSignals, cumulativePnlBps, reputationScore] =
+    await registry.getReputation(walletAddress) as [
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+    ];
+
+  return {
+    totalSignals,
+    settledSignals,
+    accurateSignals,
+    cumulativePnlBps,
+    reputationScore,
+  };
 }

@@ -122,6 +122,31 @@ export const DeleteAgentParams = zod.object({
   "id": zod.coerce.number()
 })
 
+/**
+ * @summary Get combined on-chain and off-chain reputation for an agent
+ */
+export const GetAgentReputationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAgentReputationResponse = zod.object({
+  "agentId": zod.number(),
+  "walletAddress": zod.string(),
+  "onChain": zod.object({
+    "reputationScore": zod.number(),
+    "totalSignals": zod.number(),
+    "settledSignals": zod.number(),
+    "accurateSignals": zod.number(),
+    "cumulativePnlBps": zod.number()
+  }).nullable(),
+  "offChain": zod.object({
+    "accuracyRate": zod.number(),
+    "totalSignals": zod.number(),
+    "settledSignals": zod.number()
+  }),
+  "registryNotDeployed": zod.boolean().optional()
+})
+
 
 /**
  * @summary List all signals for a specific agent
@@ -135,15 +160,20 @@ export const GetAgentSignalsResponseItem = zod.object({
   "agentId": zod.number(),
   "asset": zod.string(),
   "direction": zod.enum(['BUY', 'SELL', 'HOLD']),
+  "entryPrice": zod.string().nullish(),
   "targetPrice": zod.string(),
+  "stopPrice": zod.string().nullish(),
   "expiration": zod.coerce.date(),
   "signalHash": zod.string(),
+  "rawPayload": zod.string().nullish(),
   "onChainTxHash": zod.string().nullish(),
   "onChainId": zod.number().nullish(),
+  "revealTxHash": zod.string().nullish(),
   "status": zod.enum(['pending', 'settled', 'expired']),
   "accurate": zod.boolean().nullish(),
   "pnlBps": zod.number().nullish(),
   "stakeAmount": zod.string().nullish(),
+  "expiredReason": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "settledAt": zod.coerce.date().nullish()
 })
@@ -186,15 +216,20 @@ export const ListSignalsResponseItem = zod.object({
   "agentId": zod.number(),
   "asset": zod.string(),
   "direction": zod.enum(['BUY', 'SELL', 'HOLD']),
+  "entryPrice": zod.string().nullish(),
   "targetPrice": zod.string(),
+  "stopPrice": zod.string().nullish(),
   "expiration": zod.coerce.date(),
   "signalHash": zod.string(),
+  "rawPayload": zod.string().nullish(),
   "onChainTxHash": zod.string().nullish(),
   "onChainId": zod.number().nullish(),
+  "revealTxHash": zod.string().nullish(),
   "status": zod.enum(['pending', 'settled', 'expired']),
   "accurate": zod.boolean().nullish(),
   "pnlBps": zod.number().nullish(),
   "stakeAmount": zod.string().nullish(),
+  "expiredReason": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "settledAt": zod.coerce.date().nullish()
 })
@@ -216,9 +251,13 @@ export const CommitSignalBody = zod.object({
   "agentId": zod.number(),
   "asset": zod.string().min(1).max(commitSignalBodyAssetMax),
   "direction": zod.enum(['BUY', 'SELL', 'HOLD']),
+  "entryPrice": zod.string().min(1).optional(),
   "targetPrice": zod.string().min(1),
+  "stopPrice": zod.string().min(1).optional(),
   "expiration": zod.coerce.date(),
   "signalHash": zod.string().min(commitSignalBodySignalHashMin).max(commitSignalBodySignalHashMax),
+  "rawPayload": zod.string().optional(),
+  "revealSalt": zod.string().optional(),
   "onChainTxHash": zod.string().optional(),
   "onChainId": zod.number().optional(),
   "stakeAmount": zod.string().optional()
@@ -237,15 +276,20 @@ export const GetSignalResponse = zod.object({
   "agentId": zod.number(),
   "asset": zod.string(),
   "direction": zod.enum(['BUY', 'SELL', 'HOLD']),
+  "entryPrice": zod.string().nullish(),
   "targetPrice": zod.string(),
+  "stopPrice": zod.string().nullish(),
   "expiration": zod.coerce.date(),
   "signalHash": zod.string(),
+  "rawPayload": zod.string().nullish(),
   "onChainTxHash": zod.string().nullish(),
   "onChainId": zod.number().nullish(),
+  "revealTxHash": zod.string().nullish(),
   "status": zod.enum(['pending', 'settled', 'expired']),
   "accurate": zod.boolean().nullish(),
   "pnlBps": zod.number().nullish(),
   "stakeAmount": zod.string().nullish(),
+  "expiredReason": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "settledAt": zod.coerce.date().nullish()
 })
@@ -269,18 +313,37 @@ export const SettleSignalResponse = zod.object({
   "agentId": zod.number(),
   "asset": zod.string(),
   "direction": zod.enum(['BUY', 'SELL', 'HOLD']),
+  "entryPrice": zod.string().nullish(),
   "targetPrice": zod.string(),
+  "stopPrice": zod.string().nullish(),
   "expiration": zod.coerce.date(),
   "signalHash": zod.string(),
+  "rawPayload": zod.string().nullish(),
   "onChainTxHash": zod.string().nullish(),
   "onChainId": zod.number().nullish(),
+  "revealTxHash": zod.string().nullish(),
   "status": zod.enum(['pending', 'settled', 'expired']),
   "accurate": zod.boolean().nullish(),
   "pnlBps": zod.number().nullish(),
   "stakeAmount": zod.string().nullish(),
+  "expiredReason": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "settledAt": zod.coerce.date().nullish()
 })
+
+
+/**
+ * @summary Expire a signal with a reason
+ */
+export const ExpireSignalParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ExpireSignalBody = zod.object({
+  "reason": zod.string().min(1)
+})
+
+export const ExpireSignalResponse = GetSignalResponse
 
 
 /**
