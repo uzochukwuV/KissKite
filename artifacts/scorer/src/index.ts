@@ -1,31 +1,37 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, gt, lt, isNull } from "drizzle-orm";
 import { ethers } from "ethers";
 import pino from "pino";
 import { z } from "zod";
-import { DEPLOYMENTS, ReputationRegistryABI } from "@workspace/contracts";
+import { DEPLOYMENTS, ReputationRegistryABI, SignalRegistryABI } from "@workspace/contracts";
 import { agentsTable, db, signalsTable, type Agent, type Signal } from "@workspace/db";
 
 const KITE_RPC = "https://rpc-testnet.gokite.ai";
 const POLL_INTERVAL_MS = 60_000;
+noconst MIN_GAS_WEI = 10_000_000_000_000n; // 0.00001 testnet ETH
 const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+const MAX_RETRY_ATTEMPTS = 3;
 
-const logger = pino({
+export const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
-  redact: ["ANTHROPIC_API_KEY", "SCORER_PRIVATE_KEY"],
+  redact: ["ANTHROPIC_API_KEY", "SCORER_PRIVATE_KEY", "AGENT_PRIVATE_KEYS"],
 });
 
-const VerdictSchema = z.object({
+export const VerdictSchema = z.object({
   accurate: z.boolean(),
   pnlBps: z.number().finite(),
   reasoning: z.string().min(1),
 });
 
-type Verdict = z.infer<typeof VerdictSchema>;
+export type Verdict = z.infer<typeof VerdictSchema>;
 
-type SignalWithOptionalPrices = Signal & {
+export type SignalWithOptionalPrices = Signal & {
   entryPrice?: string | null;
   stopPrice?: string | null;
+  rawPayload?: string | null;
+  revealSalt?: string | null;
+  revealTxHash?: string | null;
+  expiredReason?: string | null;
 };
 
 interface AnthropicTextBlock {
@@ -41,6 +47,16 @@ const AnthropicResponseSchema = z.object({
     })
   ),
 });
+
+interface StartupConfig {
+  apiBaseUrl: string;
+  scorerPrivateKey: string;
+  reputationRegistryAddress: string;
+  anthropicApiKey: string;
+  databaseUrl: string;
+  provider: ethers.JsonRpcProvider;
+  scorerWallet: ethers.Wallet;
+}
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -81,7 +97,7 @@ function coercePnlBps(value: number): number {
   return Math.trunc(value);
 }
 
-function ruleBasedVerdict(signal: SignalWithOptionalPrices, closingPrice: number): Verdict {
+export function ruleBasedVerdict(signal: SignalWithOptionalPrices, closingPrice: number): Verdict {
   const direction = normalizeDirection(signal.direction);
   const entryPrice = getEntryPrice(signal);
 
@@ -130,11 +146,14 @@ function assetToCoingeckoId(asset: string): string {
   return known[symbol] ?? symbol.toLowerCase();
 }
 
-async function fetchClosingPrice(asset: string): Promise<number> {
+export async function fetchClosingPrice(asset: string): Promise<number> {
   const id = assetToCoingeckoId(asset);
   const url = new URL("https://api.coingecko.com/api/v3/simple/price");
   url.searchParams.set("ids", id);
   url.searchParams.set("vs_currencies", "usd");
+  if (process.env.COINGECKO_API_KEY) {
+    url.searchParams.set("x_cg_demo_api_key", process.env.COINGECKO_API_KEY);
+  }
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -159,7 +178,7 @@ function extractJsonObject(text: string): string {
   return text.slice(start, end + 1);
 }
 
-async function claudeVerdict(signal: SignalWithOptionalPrices, closingPrice: number): Promise<Verdict> {
+export async function claudeVerdict(signal: SignalWithOptionalPrices, closingPrice: number): Promise<Verdict> {
   const apiKey = requiredEnv("ANTHROPIC_API_KEY");
   const entryPrice = getEntryPrice(signal);
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -220,7 +239,7 @@ async function claudeVerdict(signal: SignalWithOptionalPrices, closingPrice: num
   return { ...verdict.data, pnlBps: coercePnlBps(verdict.data.pnlBps) };
 }
 
-async function scoreSignal(signal: SignalWithOptionalPrices, closingPrice: number): Promise<Verdict> {
+export async function scoreSignal(signal: SignalWithOptionalPrices, closingPrice: number): Promise<Verdict> {
   try {
     return await claudeVerdict(signal, closingPrice);
   } catch (err) {
@@ -229,17 +248,50 @@ async function scoreSignal(signal: SignalWithOptionalPrices, closingPrice: numbe
   }
 }
 
-async function settleViaApi(apiBaseUrl: string, signalId: number, verdict: Verdict): Promise<void> {
-  const response = await fetch(`${apiBaseUrl.replace(/\/$/u, "")}/api/signals/${signalId}/settle`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ accurate: verdict.accurate, pnlBps: verdict.pnlBps }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Settlement API failed with HTTP ${response.status}: ${body}`);
+async function withRetry<T>(operationName: string, operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      lastError = err;
+      if (attempt === MAX_RETRY_ATTEMPTS) break;
+      const delayMs = 500 * 2 ** (attempt - 1);
+      logger.warn({ err, operationName, attempt, delayMs }, "Operation failed; retrying");
+      await sleep(delayMs);
+    }
   }
+  throw lastError;
+}
+
+export async function settleViaApi(apiBaseUrl: string, signalId: number, verdict: Verdict): Promise<void> {
+  await withRetry("settleViaApi", async () => {
+    const response = await fetch(`${apiBaseUrl.replace(/\/$/u, "")}/api/signals/${signalId}/settle`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accurate: verdict.accurate, pnlBps: verdict.pnlBps }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Settlement API failed with HTTP ${response.status}: ${body}`);
+    }
+  });
+}
+
+export async function expireViaApi(apiBaseUrl: string, signalId: number, reason: string): Promise<void> {
+  await withRetry("expireViaApi", async () => {
+    const response = await fetch(`${apiBaseUrl.replace(/\/$/u, "")}/api/signals/${signalId}/expire`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Expire API failed with HTTP ${response.status}: ${body}`);
+    }
+  });
 }
 
 function resolveOnChainSignalId(signal: Signal): bigint | null {
@@ -258,7 +310,75 @@ function resolveOnChainSignalId(signal: Signal): bigint | null {
   return null;
 }
 
-async function recordReputation(agent: Agent, signal: Signal, verdict: Verdict): Promise<string | null> {
+function loadAgentPrivateKeys(): Map<string, string> {
+  const raw = process.env.AGENT_PRIVATE_KEYS;
+  if (!raw) return new Map();
+
+  const parsed = z.record(z.string(), z.string()).safeParse(JSON.parse(raw) as unknown);
+  if (!parsed.success) {
+    throw new Error("AGENT_PRIVATE_KEYS must be a JSON object of walletAddress to privateKey");
+  }
+
+  return new Map(
+    Object.entries(parsed.data).map(([walletAddress, privateKey]) => [
+      walletAddress.toLowerCase(),
+      privateKey,
+    ])
+  );
+}
+
+function getRevealWallet(
+  agent: Agent,
+  provider: ethers.JsonRpcProvider,
+  scorerWallet: ethers.Wallet
+): ethers.Wallet | null {
+  if (scorerWallet.address.toLowerCase() === agent.walletAddress.toLowerCase()) {
+    return scorerWallet;
+  }
+
+  const privateKey = loadAgentPrivateKeys().get(agent.walletAddress.toLowerCase());
+  return privateKey ? new ethers.Wallet(privateKey, provider) : null;
+}
+
+async function revealSignalOnChain(
+  provider: ethers.JsonRpcProvider,
+  scorerWallet: ethers.Wallet,
+  agent: Agent,
+  signal: SignalWithOptionalPrices
+): Promise<string | null> {
+  if (!DEPLOYMENTS.signalRegistry || !signal.rawPayload || !signal.revealSalt || signal.revealTxHash) {
+    return null;
+  }
+
+  const onChainSignalId = resolveOnChainSignalId(signal);
+  if (onChainSignalId === null) return null;
+
+  const revealWallet = getRevealWallet(agent, provider, scorerWallet);
+  if (!revealWallet) {
+    logger.warn({ signalId: signal.id, walletAddress: agent.walletAddress }, "No agent private key available for reveal automation");
+    return null;
+  }
+
+  const registry = new ethers.Contract(DEPLOYMENTS.signalRegistry, SignalRegistryABI, revealWallet);
+  const tx = await registry.revealSignal(onChainSignalId, signal.rawPayload, signal.revealSalt) as ethers.ContractTransactionResponse;
+  await tx.wait();
+
+  await db
+    .update(signalsTable)
+    .set({ revealTxHash: tx.hash })
+    .where(eq(signalsTable.id, signal.id));
+
+  logger.info({ signalId: signal.id, onChainTxHash: tx.hash }, "Signal revealed on-chain");
+  return tx.hash;
+}
+
+export async function recordReputation(
+  agent: Agent,
+  signal: Signal,
+  verdict: Verdict,
+  provider: ethers.JsonRpcProvider,
+  scorerWallet: ethers.Wallet
+): Promise<string | null> {
   const onChainSignalId = resolveOnChainSignalId(signal);
   if (onChainSignalId === null) {
     logger.warn(
@@ -268,16 +388,13 @@ async function recordReputation(agent: Agent, signal: Signal, verdict: Verdict):
     return null;
   }
 
-  const privateKey = requiredEnv("SCORER_PRIVATE_KEY");
   const registryAddress = process.env.REPUTATION_REGISTRY_ADDRESS || DEPLOYMENTS.reputationRegistry;
   if (!registryAddress) {
     logger.warn({ signalId: signal.id }, "Skipping on-chain reputation write because ReputationRegistry is not deployed");
     return null;
   }
 
-  const provider = new ethers.JsonRpcProvider(KITE_RPC, { name: "kite-testnet", chainId: 2368 });
-  const wallet = new ethers.Wallet(privateKey, provider);
-  const registry = new ethers.Contract(registryAddress, ReputationRegistryABI, wallet);
+  const registry = new ethers.Contract(registryAddress, ReputationRegistryABI, scorerWallet.connect(provider));
   const tx = await registry.recordSettlement(
     agent.walletAddress,
     verdict.accurate,
@@ -288,16 +405,50 @@ async function recordReputation(agent: Agent, signal: Signal, verdict: Verdict):
   return tx.hash;
 }
 
-async function processSignal(apiBaseUrl: string, signal: Signal, agent: Agent): Promise<void> {
-  const closingPrice = await fetchClosingPrice(signal.asset);
+async function isSignalRevealedOnChain(
+  provider: ethers.JsonRpcProvider,
+  signal: Signal
+): Promise<boolean> {
+  if (!DEPLOYMENTS.signalRegistry) return false;
+  const onChainSignalId = resolveOnChainSignalId(signal);
+  if (onChainSignalId === null) return false;
+
+  const registry = new ethers.Contract(DEPLOYMENTS.signalRegistry, SignalRegistryABI, provider);
+  const [, , , , revealed] = await registry.getSignal(onChainSignalId) as [
+    string,
+    string,
+    bigint,
+    bigint,
+    boolean,
+  ];
+  return revealed;
+}
+
+export async function processSignal(
+  apiBaseUrl: string,
+  signal: Signal,
+  agent: Agent,
+  provider: ethers.JsonRpcProvider,
+  scorerWallet: ethers.Wallet
+): Promise<void> {
   const scoredSignal = signal as SignalWithOptionalPrices;
+  if (resolveOnChainSignalId(signal) !== null && !scoredSignal.revealTxHash) {
+    const revealedOnChain = await isSignalRevealedOnChain(provider, signal);
+    if (!revealedOnChain) {
+      await expireViaApi(apiBaseUrl, signal.id, "Signal expired before on-chain reveal was observed");
+      logger.warn({ signalId: signal.id }, "Expired signal instead of settling because reveal was not completed");
+      return;
+    }
+  }
+
+  const closingPrice = await fetchClosingPrice(signal.asset);
   const verdict = await scoreSignal(scoredSignal, closingPrice);
 
   await settleViaApi(apiBaseUrl, signal.id, verdict);
 
   let onChainTxHash: string | null = null;
   try {
-    onChainTxHash = await recordReputation(agent, signal, verdict);
+    onChainTxHash = await recordReputation(agent, signal, verdict, provider, scorerWallet);
   } catch (err) {
     logger.error({ err, signalId: signal.id }, "On-chain reputation write failed after DB settlement");
   }
@@ -318,7 +469,32 @@ async function processSignal(apiBaseUrl: string, signal: Signal, agent: Agent): 
   );
 }
 
-async function pollOnce(apiBaseUrl: string): Promise<void> {
+export async function revealPendingSignals(
+  provider: ethers.JsonRpcProvider,
+  scorerWallet: ethers.Wallet
+): Promise<void> {
+  const rows = await db
+    .select({ signal: signalsTable, agent: agentsTable })
+    .from(signalsTable)
+    .innerJoin(agentsTable, eq(signalsTable.agentId, agentsTable.id))
+    .where(and(eq(signalsTable.status, "pending"), gt(signalsTable.expiration, new Date()), isNull(signalsTable.revealTxHash)));
+
+  for (const row of rows) {
+    try {
+      await revealSignalOnChain(provider, scorerWallet, row.agent, row.signal as SignalWithOptionalPrices);
+    } catch (err) {
+      logger.error({ err, signalId: row.signal.id }, "Signal reveal automation failed");
+    }
+  }
+}
+
+export async function pollOnce(
+  apiBaseUrl: string,
+  provider: ethers.JsonRpcProvider,
+  scorerWallet: ethers.Wallet
+): Promise<void> {
+  await revealPendingSignals(provider, scorerWallet);
+
   const rows = await db
     .select({ signal: signalsTable, agent: agentsTable })
     .from(signalsTable)
@@ -332,31 +508,67 @@ async function pollOnce(apiBaseUrl: string): Promise<void> {
 
   logger.info({ count: rows.length }, "Expired pending signals found");
 
+  const processed = new Set<number>();
   for (const row of rows) {
+    if (processed.has(row.signal.id)) continue;
+    processed.add(row.signal.id);
+
     try {
-      await processSignal(apiBaseUrl, row.signal, row.agent);
+      await processSignal(apiBaseUrl, row.signal, row.agent, provider, scorerWallet);
     } catch (err) {
       logger.error({ err, signalId: row.signal.id }, "Failed to process signal");
     }
   }
 }
 
-async function main(): Promise<void> {
-  requiredEnv("DATABASE_URL");
-  requiredEnv("API_BASE_URL");
-  requiredEnv("ANTHROPIC_API_KEY");
-  requiredEnv("SCORER_PRIVATE_KEY");
+export async function validateStartup(): Promise<StartupConfig> {
+  const databaseUrl = requiredEnv("DATABASE_URL");
+  const apiBaseUrl = requiredEnv("API_BASE_URL");
+  const anthropicApiKey = requiredEnv("ANTHROPIC_API_KEY");
+  const scorerPrivateKey = requiredEnv("SCORER_PRIVATE_KEY");
+  const reputationRegistryAddress = requiredEnv("REPUTATION_REGISTRY_ADDRESS");
 
-  const apiBaseUrl = process.env.API_BASE_URL!;
+  const provider = new ethers.JsonRpcProvider(KITE_RPC, { name: "kite-testnet", chainId: 2368 });
+  const network = await provider.getNetwork();
+  if (network.chainId !== 2368n) {
+    throw new Error(`Kite RPC returned unexpected chainId ${network.chainId.toString()}`);
+  }
+
+  const scorerWallet = new ethers.Wallet(scorerPrivateKey, provider);
+  const balance = await provider.getBalance(scorerWallet.address);
+  if (balance < MIN_GAS_WEI) {
+    throw new Error(`Scorer wallet ${scorerWallet.address} has insufficient gas: ${balance.toString()} wei`);
+  }
+
+  logger.info(
+    { scorerWallet: scorerWallet.address, chainId: network.chainId.toString(), gasWei: balance.toString() },
+    "Scorer startup validation passed"
+  );
+
+  return {
+    apiBaseUrl,
+    scorerPrivateKey,
+    reputationRegistryAddress,
+    anthropicApiKey,
+    databaseUrl,
+    provider,
+    scorerWallet,
+  };
+}
+
+export async function main(): Promise<void> {
+  const config = await validateStartup();
   logger.info({ pollIntervalMs: POLL_INTERVAL_MS }, "Kite scorer started");
 
   for (;;) {
-    await pollOnce(apiBaseUrl);
+    await pollOnce(config.apiBaseUrl, config.provider, config.scorerWallet);
     await sleep(POLL_INTERVAL_MS);
   }
 }
 
-main().catch((err) => {
-  logger.error({ err }, "Kite scorer exited unexpectedly");
-  process.exitCode = 1;
-});
+if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+  main().catch((err) => {
+    logger.error({ err }, "Kite scorer exited unexpectedly");
+    process.exitCode = 1;
+  });
+}
