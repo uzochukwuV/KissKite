@@ -4,6 +4,7 @@ import path from "path";
 
 // Kite testnet USDT (18-decimal test stablecoin)
 const TESTNET_USDT = "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63";
+const SCORER_ADDRESS = process.env.SCORER_ADDRESS;
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -33,7 +34,20 @@ async function main() {
   const subscriptionPassAddress = await subscriptionPass.getAddress();
   console.log("SubscriptionPass: ", subscriptionPassAddress);
 
-  // ── 3. Write deployments JSON ─────────────────────────────────────────────
+  // ── 3. Deploy ReputationRegistry ─────────────────────────────────────────
+
+  const initialScorer = SCORER_ADDRESS || deployer.address;
+  console.log("Deploying ReputationRegistry...");
+  const ReputationRegistry = await ethers.getContractFactory("ReputationRegistry");
+  const reputationRegistry = await ReputationRegistry.deploy(
+    deployer.address,
+    initialScorer
+  );
+  await reputationRegistry.waitForDeployment();
+  const reputationRegistryAddress = await reputationRegistry.getAddress();
+  console.log("ReputationRegistry:", reputationRegistryAddress);
+
+  // ── 4. Write deployments JSON ─────────────────────────────────────────────
 
   const deploymentsRecord = {
     network:          "kite-testnet",
@@ -42,6 +56,7 @@ async function main() {
     deployer:         deployer.address,
     signalRegistry:   signalRegistryAddress,
     subscriptionPass: subscriptionPassAddress,
+    reputationRegistry: reputationRegistryAddress,
     usdtToken:        TESTNET_USDT,
   };
 
@@ -65,7 +80,7 @@ async function main() {
     console.log("TypeScript package updated at:   ", libContractsPath);
   }
 
-  // ── 4. Summary ────────────────────────────────────────────────────────────
+  // ── 5. Summary ────────────────────────────────────────────────────────────
 
   console.log("\n════════════════════════════════════════════════════════");
   console.log("DEPLOYMENT SUMMARY — Kite Testnet");
@@ -73,11 +88,14 @@ async function main() {
   console.log("Deployer:         ", deployer.address);
   console.log("SignalRegistry:   ", signalRegistryAddress);
   console.log("SubscriptionPass: ", subscriptionPassAddress);
+  console.log("ReputationRegistry:", reputationRegistryAddress);
+  console.log("Scorer:           ", initialScorer);
   console.log("USDT Token:       ", TESTNET_USDT);
   console.log("════════════════════════════════════════════════════════");
   console.log("\nNext: set these in Replit Secrets:");
   console.log("  SIGNAL_REGISTRY_ADDRESS  =", signalRegistryAddress);
   console.log("  SUBSCRIPTION_PASS_ADDRESS=", subscriptionPassAddress);
+  console.log("  REPUTATION_REGISTRY_ADDRESS=", reputationRegistryAddress);
 }
 
 main().catch((error) => {

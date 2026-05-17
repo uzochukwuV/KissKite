@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, signalsTable, agentsTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { broadcastSignal } from "../lib/websocket";
+import { broadcastReputationUpdate, broadcastSignal } from "../lib/websocket";
 import {
   CommitSignalBody,
   SettleSignalBody,
@@ -167,14 +167,26 @@ router.post("/signals/:id/settle", async (req, res): Promise<void> => {
   const accuracyRate =
     row.count > 0 ? Math.round((row.accurate / row.count) * 10000) : 0;
 
-  await db
+  const [updatedAgent] = await db
     .update(agentsTable)
     .set({
       settledSignals: sql`${agentsTable.settledSignals} + 1`,
       accuracyRate,
       updatedAt: new Date(),
     })
-    .where(eq(agentsTable.id, existing.agentId));
+    .where(eq(agentsTable.id, existing.agentId))
+    .returning({
+      id: agentsTable.id,
+      walletAddress: agentsTable.walletAddress,
+    });
+
+  if (updatedAgent) {
+    broadcastReputationUpdate(
+      String(updatedAgent.id),
+      updatedAgent.walletAddress,
+      accuracyRate
+    );
+  }
 
   res.json(SettleSignalResponse.parse(signal));
 });
