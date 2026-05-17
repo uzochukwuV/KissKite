@@ -22,6 +22,10 @@ export type { IERC1155 } from "./@openzeppelin/contracts/token/ERC1155/IERC1155"
 export { IERC1155__factory } from "./factories/@openzeppelin/contracts/token/ERC1155/IERC1155__factory";
 export type { IERC1155Receiver } from "./@openzeppelin/contracts/token/ERC1155/IERC1155Receiver";
 export { IERC1155Receiver__factory } from "./factories/@openzeppelin/contracts/token/ERC1155/IERC1155Receiver__factory";
+export type { ERC20 } from "./@openzeppelin/contracts/token/ERC20/ERC20";
+export { ERC20__factory } from "./factories/@openzeppelin/contracts/token/ERC20/ERC20__factory";
+export type { IERC20Metadata } from "./@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata";
+export { IERC20Metadata__factory } from "./factories/@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata__factory";
 export type { IERC20 } from "./@openzeppelin/contracts/token/ERC20/IERC20";
 export { IERC20__factory } from "./factories/@openzeppelin/contracts/token/ERC20/IERC20__factory";
 export type { ERC165 } from "./@openzeppelin/contracts/utils/introspection/ERC165";
@@ -34,6 +38,10 @@ export type { ReentrancyGuard } from "./@openzeppelin/contracts/utils/Reentrancy
 export { ReentrancyGuard__factory } from "./factories/@openzeppelin/contracts/utils/ReentrancyGuard__factory";
 export type { ClientAgentVault } from "./contracts/ClientAgentVault";
 export { ClientAgentVault__factory } from "./factories/contracts/ClientAgentVault__factory";
+export type { MockERC20 } from "./contracts/MockERC20";
+export { MockERC20__factory } from "./factories/contracts/MockERC20__factory";
+export type { ReputationRegistry } from "./contracts/ReputationRegistry";
+export { ReputationRegistry__factory } from "./factories/contracts/ReputationRegistry__factory";
 export type { SignalRegistry } from "./contracts/SignalRegistry";
 export { SignalRegistry__factory } from "./factories/contracts/SignalRegistry__factory";
 export type { SubscriptionPass } from "./contracts/SubscriptionPass";

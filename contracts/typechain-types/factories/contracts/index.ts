@@ -2,5 +2,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export { ClientAgentVault__factory } from "./ClientAgentVault__factory";
+export { MockERC20__factory } from "./MockERC20__factory";
+export { ReputationRegistry__factory } from "./ReputationRegistry__factory";
 export { SignalRegistry__factory } from "./SignalRegistry__factory";
 export { SubscriptionPass__factory } from "./SubscriptionPass__factory";

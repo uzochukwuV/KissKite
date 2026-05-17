@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -32,3 +32,9 @@ externalPort = 8081
 [userenv.shared]
 SIGNAL_REGISTRY_ADDRESS = "0x0788984E48c5A834C642FF7d60870b6209ad19c5"
 SUBSCRIPTION_PASS_ADDRESS = "0x11B50f35eAA67fEE0943d26351EC1E8E0840b931"
+DEPLOYER_PRIVATE_KEY = "0x6895ffc17fb8f609ce39fd64a4e27cf6db2792f69d50c3360c6e2ffda46efa36"
+COINGECKO_API_KEY = "CG-R2paEiA7U3zZkjA6zZR7if4W"
+SCORER_PRIVATE_KEY = "0x6895ffc17fb8f609ce39fd64a4e27cf6db2792f69d50c3360c6e2ffda46efa36"
+
+[nix]
+channel = "stable-25_05"

@@ -2,5 +2,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { ClientAgentVault } from "./ClientAgentVault";
+export type { MockERC20 } from "./MockERC20";
+export type { ReputationRegistry } from "./ReputationRegistry";
 export type { SignalRegistry } from "./SignalRegistry";
 export type { SubscriptionPass } from "./SubscriptionPass";
