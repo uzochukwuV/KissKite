@@ -8,7 +8,7 @@ import { agentsTable, db, signalsTable, type Agent, type Signal } from "@workspa
 
 const KITE_RPC = "https://rpc-testnet.gokite.ai";
 const POLL_INTERVAL_MS = 60_000;
-const MIN_GAS_WEI = 10_000_000_000_000n; // 0.00001 testnet ETH
+noconst MIN_GAS_WEI = 10_000_000_000_000n; // 0.00001 testnet ETH
 const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 const MAX_RETRY_ATTEMPTS = 3;
 
